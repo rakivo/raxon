@@ -2,5 +2,7 @@
 raxon
 magics
 target
+magic.rs
 Cargo.lock
 Cargo.toml
+print_magic

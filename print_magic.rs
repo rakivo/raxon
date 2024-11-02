@@ -1,3 +1,18 @@
+// NOTE: some of masks and functions here is translated `C` code from here: https://github.com/maksimKorzh/chess_programming/blob/master/src/magics/magics.c, so I'm going to paste the license thingy to show respect.
+
+/**************************************\
+ ======================================
+        
+         Plain magic bitboards
+     implementation & demonstration
+     
+            translated from
+                  
+           Code Monkey King
+
+ ======================================
+\**************************************/
+
 const ROOK_MAGICS: [u64; 64] = [
     0x8a80104000800020u64,
     0x140002000100040u64,
@@ -65,7 +80,7 @@ const ROOK_MAGICS: [u64; 64] = [
     0x1004081002402u64,
 ];
 
-const BISHOP_MAGICS: [u64; 64] = [
+pub const BISHOP_MAGICS: [u64; 64] = [
     0x40040844404084u64,
     0x2004208a004208u64,
     0x10190041080202u64,
@@ -132,7 +147,7 @@ const BISHOP_MAGICS: [u64; 64] = [
     0x4010011029020020u64,
 ];
 
-const ROOK_RELLEVANT_BITS: [u8; 64] = [
+const ROOK_RELEVANT_BITS: [u8; 64] = [
     12, 11, 11, 11, 11, 11, 11, 12,
     11, 10, 10, 10, 10, 10, 10, 11,
     11, 10, 10, 10, 10, 10, 10, 11,
@@ -143,7 +158,7 @@ const ROOK_RELLEVANT_BITS: [u8; 64] = [
     12, 11, 11, 11, 11, 11, 11, 12
 ];
 
-const BISHOP_RELLEVANT_BITS: [u8; 64] = [
+const BISHOP_RELEVANT_BITS: [u8; 64] = [
     6, 5, 5, 5, 5, 5, 5, 6,
     5, 5, 5, 5, 5, 5, 5, 5,
     5, 5, 7, 7, 7, 7, 5, 5,
@@ -155,14 +170,11 @@ const BISHOP_RELLEVANT_BITS: [u8; 64] = [
 ];
 
 const fn mask_rook_attacks(square: u64) -> u64 {
-    // attacks bitboard
     let mut attacks = 0u64;
     
-    // init target files & ranks
     let tr = square / 8;
     let tf = square % 8;
     
-    // mask attacks moving north
     if tr < 7 {
         let mut r = tr + 1;
         while r <= 6 {
@@ -170,8 +182,7 @@ const fn mask_rook_attacks(square: u64) -> u64 {
             r += 1;
         }
     }
-    
-    // mask attacks moving south
+
     if tr > 0 {
         let mut r = tr - 1;
         while r >= 1 {
@@ -179,8 +190,7 @@ const fn mask_rook_attacks(square: u64) -> u64 {
             r -= 1;
         }
     }
-    
-    // mask attacks moving east
+
     if tf < 7 {
         let mut f = tf + 1;
         while f <= 6 {
@@ -189,7 +199,6 @@ const fn mask_rook_attacks(square: u64) -> u64 {
         }
     }
     
-    // mask attacks moving west
     if tf > 0 {
         let mut f = tf - 1;
         while f >= 1 {
@@ -202,14 +211,11 @@ const fn mask_rook_attacks(square: u64) -> u64 {
 }
 
 const fn mask_bishop_attacks(square: u64) -> u64 {
-    // attack bitboard
     let mut attacks = 0u64;
     
-    // init target files & ranks
     let tr = square / 8;
     let tf = square % 8;
     
-    // mask attacks for north-east direction
     if tf < 7 && tr < 7 {
         let mut r = tr + 1;
         let mut f = tf + 1;
@@ -220,7 +226,6 @@ const fn mask_bishop_attacks(square: u64) -> u64 {
         }
     }
     
-    // mask attacks for north-west direction
     if tf > 0 && tr < 7 {
         let mut r = tr + 1;
         let mut f = tf - 1;
@@ -231,7 +236,6 @@ const fn mask_bishop_attacks(square: u64) -> u64 {
         }
     }
     
-    // mask attacks for south-east direction
     if tf < 7 && tr > 0 {
         let mut r = tr - 1;
         let mut f = tf + 1;
@@ -242,7 +246,6 @@ const fn mask_bishop_attacks(square: u64) -> u64 {
         }
     }
     
-    // mask attacks for south-west direction
     if tf > 0 && tr > 0 {
         let mut r = tr - 1;
         let mut f = tf - 1;
@@ -298,10 +301,7 @@ const fn set_occupancy(index: usize, bits_in_mask: usize, mut attack_mask: u64) 
     occupancy
 }
 
-const fn init_bishop_attacks(
-    bishop_masks: &mut [u64; 64],
-    bishop_attacks: &mut [[u64; 512]; 64],
-) {
+const fn init_bishop_attacks(bishop_masks: &mut [u64; 64], bishop_attacks: &mut [[u64; 512]; 64]) {
     let mut square = 0;
     while square < 64 {
         bishop_masks[square] = mask_bishop_attacks(square as u64);
@@ -313,7 +313,7 @@ const fn init_bishop_attacks(
         while count < occupancy_variations {
             let occupancy = set_occupancy(count, bit_count, mask);
             let magic_index = (occupancy * BISHOP_MAGICS[square] >> 
-                             (64 - BISHOP_RELLEVANT_BITS[square])) as usize;
+                             (64 - BISHOP_RELEVANT_BITS[square])) as usize;
             
             bishop_attacks[square][magic_index] = 
                 bishop_attacks_on_the_fly(square as u64, occupancy);
@@ -324,10 +324,7 @@ const fn init_bishop_attacks(
     }
 }
 
-const fn init_rook_attacks(
-    rook_masks: &mut [u64; 64],
-    rook_attacks: &mut [[u64; 4096]; 64],
-) {
+const fn init_rook_attacks(rook_masks: &mut [u64; 64], rook_attacks: &mut [[u64; 4096]; 64]) {
     let mut square = 0;
     while square < 64 {
         rook_masks[square] = mask_rook_attacks(square as u64);
@@ -339,10 +336,9 @@ const fn init_rook_attacks(
         while count < occupancy_variations {
             let occupancy = set_occupancy(count, bit_count, mask);
             let magic_index = (occupancy * ROOK_MAGICS[square] >> 
-                             (64 - ROOK_RELLEVANT_BITS[square])) as usize;
+                             (64 - ROOK_RELEVANT_BITS[square])) as usize;
             
-            rook_attacks[square][magic_index] = 
-                rook_attacks_on_the_fly(square as u64, occupancy);
+            rook_attacks[square][magic_index] = rook_attacks_on_the_fly(square as u64, occupancy);
             
             count += 1;
         }
@@ -355,7 +351,6 @@ const fn bishop_attacks_on_the_fly(square: u64, block: u64) -> u64 {
     let tr = square / 8;
     let tf = square % 8;
     
-    // north-east direction
     if tf < 7 && tr < 7 {
         let mut r = tr + 1;
         let mut f = tf + 1;
@@ -369,7 +364,6 @@ const fn bishop_attacks_on_the_fly(square: u64, block: u64) -> u64 {
         }
     }
     
-    // north-west direction
     if tf > 0 && tr < 7 {
         let mut r = tr + 1;
         let mut f = tf - 1;
@@ -383,7 +377,6 @@ const fn bishop_attacks_on_the_fly(square: u64, block: u64) -> u64 {
         }
     }
     
-    // south-east direction
     if tf < 7 && tr > 0 {
         let mut r = tr - 1;
         let mut f = tf + 1;
@@ -397,7 +390,6 @@ const fn bishop_attacks_on_the_fly(square: u64, block: u64) -> u64 {
         }
     }
     
-    // south-west direction
     if tf > 0 && tr > 0 {
         let mut r = tr - 1;
         let mut f = tf - 1;
@@ -466,67 +458,74 @@ const fn rook_attacks_on_the_fly(square: u64, block: u64) -> u64 {
     attacks
 }
 
-const fn init_bishop_masks_and_attacks() -> ([u64; 64], [[u64; 512]; 64]) {
-    let mut bishop_masks = [0u64; 64];
-    let mut bishop_attacks = [[0u64; 512]; 64];
-    init_bishop_attacks(&mut bishop_masks, &mut bishop_attacks);
-    (bishop_masks, bishop_attacks)
+fn print_relevant_bits() {
+    print!("pub const ROOK_RELEVANT_BITS: [u8; 64] = [");
+    for value in ROOK_RELEVANT_BITS.iter() {
+        print!("{value},");
+    }
+    println!("];");
+    println!("pub const BISHOP_RELEVANT_BITS: [u8; 64] = [");
+    for value in BISHOP_RELEVANT_BITS.iter() {
+        print!("{value},");
+    }
+    println!("];");
 }
 
-const _BISHOP_MASKS_AND_ATTACKS: ([u64; 64], [[u64; 512]; 64]) = init_bishop_masks_and_attacks();
-const BISHOP_MASKS: [u64; 64] = _BISHOP_MASKS_AND_ATTACKS.0;
-const BISHOP_ATTACKS: [[u64; 512]; 64] = _BISHOP_MASKS_AND_ATTACKS.1;
-
-const fn init_rook_masks_and_attacks() -> ([u64; 64], [[u64; 4096]; 64]) {
+fn print_constants() {
     let mut rook_masks = [0u64; 64];
     let mut rook_attacks = [[0u64; 4096]; 64];
     init_rook_attacks(&mut rook_masks, &mut rook_attacks);
-    (rook_masks, rook_attacks)
-}
 
-#[allow(long_running_const_eval)]
-const _ROOK_MASKS_AND_ATTACKS: ([u64; 64], [[u64; 4096]; 64]) = init_rook_masks_and_attacks();
-const ROOK_MASKS: [u64; 64] = _ROOK_MASKS_AND_ATTACKS.0;
-const ROOK_ATTACKS: [[u64; 4096]; 64] = _ROOK_MASKS_AND_ATTACKS.1;
-
-fn print_rook_constants() {
-    let (rook_masks, rook_attacks) = init_rook_masks_and_attacks();
-
-    // Print `ROOK_MASKS` in Rust array format
-    println!("const ROOK_MASKS: [u64; 64] = [");
+    print!("pub const ROOK_MASKS: [u64; 64] = [");
     for value in rook_masks.iter() {
-        println!("    {:#018x},", value); // Hex format for readability
+        print!("{value:#018x},");
     }
     println!("];\n");
-
-    // Print `ROOK_ATTACKS` in Rust 2D array format
-    println!("const ROOK_ATTACKS: [[u64; 4096]; 64] = [");
+    print!("pub const ROOK_ATTACKS: [[u64; 4096]; 64] = [");
     for row in rook_attacks.iter() {
-        print!("    [");
+        print!("[");
         for value in row.iter() {
-            print!("{:#018x}, ", value);
+            print!("{value:#018x}, ");
         }
-        println!("],");
+        print!("],");
+    }
+    println!("];");
+
+    let mut bishop_masks = [0u64; 64];
+    let mut bishop_attacks = [[0u64; 512]; 64];
+    init_bishop_attacks(&mut bishop_masks, &mut bishop_attacks);
+
+    print!("pub const BISHOP_MASKS: [u64; 64] = [");
+    for value in bishop_masks.iter() {
+        print!("{value:#018x},")
+    }
+    println!("];\n");
+    print!("pub const BISHOP_ATTACKS: [[u64; 512]; 64] = [");
+    for row in bishop_attacks.iter() {
+        print!("[");
+        for value in row.iter() {
+            print!("{value:#018x}, ");
+        }
+        print!("],");
     }
     println!("];");
 }
 
-fn print_bishop_constants() {
-    let (bishop_masks, bishop_attacks) = init_bishop_masks_and_attacks();
-
-    println!("const BISHOP_MASKS: [u64; 64] = [");
-    for value in bishop_masks.iter() {
-        println!("    {:#018x},", value)
-    }
-    println!("];\n");
-
-    println!("const BISHOP_ATTACKS: [[u64; 512]; 64] = [");
-    for row in bishop_attacks.iter() {
-        print!("    [");
-        for value in row.iter() {
-            print!("{:#018x}, ", value);
-        }
-        println!("],");
+fn print_magics() {
+    print!("pub const ROOK_MAGICS: [u64; 64] = [");
+    for value in ROOK_MAGICS.iter() {
+        print!("{value},");
     }
     println!("];");
+    print!("pub const BISHOP_MAGICS: [u64; 64] = [");
+    for value in BISHOP_MAGICS.iter() {
+        print!("{value},");
+    }
+    println!("];");
+}
+
+fn main() {
+    print_magics();
+    print_constants();
+    print_relevant_bits();
 }
