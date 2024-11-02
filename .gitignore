@@ -1,4 +1,6 @@
+*.c
 raxon
+magics
 target
 Cargo.lock
 Cargo.toml
