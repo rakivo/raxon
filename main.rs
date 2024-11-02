@@ -41,8 +41,8 @@ impl Move {
 
     #[inline(always)]
     pub const fn try_from_2d((row, col): (u8, u8)) -> Result::<Self, ()> {
-        if row < 8 && col < 8 {
-            Ok(unsafe { std::mem::transmute(row * 8 + col) })
+        if row < Board::HEIGHT as _ && col < Board::WIDTH as _ {
+            Ok(unsafe { std::mem::transmute(row * Board::HEIGHT as u8 + col) })
         } else {
             Err(())
         }
@@ -52,13 +52,13 @@ impl Move {
 impl Display for Move {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let idx = *self as u8;
+        let idx = *self as usize;
         let file = (idx % 8) as u8;
         write!{
             f,
             "{file_char}{rank}",
             file_char = (b'a' + file) as char,
-            rank = (idx / 8) as u8 + 1
+            rank = Board::WIDTH - idx / Board::HEIGHT
         }
     }
 }
@@ -193,8 +193,8 @@ impl Board {
     }
 
     pub const fn from_offsets(offsets: &[Offset], pos: usize) -> Self {
-        let row = (pos / Self::WIDTH) as i8;
-        let col = (pos % Self::HEIGHT) as i8;
+        let row = (pos / Self::HEIGHT) as i8;
+        let col = (pos % Self::WIDTH) as i8;
 
         let mut i = 0;
         let mut board = Self::new();
@@ -359,14 +359,17 @@ fn main() {
     println!("board occupation: ");
     println!("{board}");
 
-    println!("\nrook attacks: ");
-    println!("{}", board.get_rook_attacks_move(Move::E5));
+    let pos = Move::E5;
+    println!("\nrook attacks from {pos}: ");
+    println!("{}", board.get_rook_attacks_move(pos));
 
-    println!("\nbishop attacks: ");
-    println!("{}", board.get_bishop_attacks_move(Move::G6));
+    let pos = Move::G6;
+    println!("\nbishop attacks from {pos}: ");
+    println!("{}", board.get_bishop_attacks_move(pos));
 
-    println!("\nknight attacks: ");
-    println!("{}", Board::get_knight_attacks_move(Move::G6));
+    let pos = Move::G6;
+    println!("\nknight attacks from {pos}: ");
+    println!("{}", Board::get_knight_attacks_move(pos));
 }
 
 /* TODO:
