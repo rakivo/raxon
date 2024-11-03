@@ -461,12 +461,12 @@ const fn rook_attacks_on_the_fly(square: u64, block: u64) -> u64 {
 fn print_relevant_bits() {
     print!("pub const ROOK_RELEVANT_BITS: [u8; 64] = [");
     for value in ROOK_RELEVANT_BITS.iter() {
-        print!("{value},");
+        print!("{value:#018x},");
     }
     println!("];");
     println!("pub const BISHOP_RELEVANT_BITS: [u8; 64] = [");
     for value in BISHOP_RELEVANT_BITS.iter() {
-        print!("{value},");
+        print!("{value:#018x},");
     }
     println!("];");
 }
@@ -514,12 +514,12 @@ fn print_constants() {
 fn print_magics() {
     print!("pub const ROOK_MAGICS: [u64; 64] = [");
     for value in ROOK_MAGICS.iter() {
-        print!("{value},");
+        print!("{value:#018x},");
     }
     println!("];");
     print!("pub const BISHOP_MAGICS: [u64; 64] = [");
     for value in BISHOP_MAGICS.iter() {
-        print!("{value},");
+        print!("{value:#018x},");
     }
     println!("];");
 }

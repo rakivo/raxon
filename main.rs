@@ -142,23 +142,28 @@ impl Board {
         self.0 = (self.0 & !(1 << pos as u8)) | ((value as u64) << pos as u8)
     }
 
-    #[inline]
+    #[inline(always)]
+    pub const fn get_queen_attacks(&self, square: usize) -> Self {
+        Self(self.get_rook_attacks(square).0 | self.get_bishop_attacks(square).0)
+    }
+
+    #[inline(always)]
     pub const fn get_knight_attacks(square: usize) -> Self {
         KNIGHT_OFFSET_BOARDS[square]
     }
 
-    #[inline]
+    #[inline(always)]
     pub const fn get_rook_attacks(&self, square: usize) -> Self {
         let Board(mut occupancy) = *self;
 
 	    occupancy &= ROOK_MASKS[square];
-	    occupancy *=  ROOK_MAGICS[square];
+	    occupancy *= ROOK_MAGICS[square];
 	    occupancy >>= Board::SIZE as u8 - ROOK_RELEVANT_BITS[square];
 
-	    Board(ROOK_ATTACKS[square][occupancy as usize])
+	    Self(ROOK_ATTACKS[square][occupancy as usize])
     }
 
-    #[inline]
+    #[inline(always)]
     pub const fn get_bishop_attacks(&self, square: usize) -> Self {
         let Board(mut occupancy) = *self;
 
@@ -166,20 +171,25 @@ impl Board {
 	    occupancy *= BISHOP_MAGICS[square];
 	    occupancy >>= Board::SIZE as u8 - BISHOP_RELEVANT_BITS[square];
 
-	    Board(BISHOP_ATTACKS[square][occupancy as usize])
+	    Self(BISHOP_ATTACKS[square][occupancy as usize])
     }
 
-    #[inline]
+    #[inline(always)]
+    pub const fn get_queen_attacks_move(&self, pos: Move) -> Self {
+        self.get_queen_attacks(pos.flatten() as _)
+    }
+
+    #[inline(always)]
     pub const fn get_knight_attacks_move(pos: Move) -> Self {
         Self::get_knight_attacks(pos.flatten() as _)
     }
 
-    #[inline]
+    #[inline(always)]
     pub const fn get_bishop_attacks_move(&self, pos: Move) -> Self {
         self.get_bishop_attacks(pos.flatten() as _)
     }
 
-    #[inline]
+    #[inline(always)]
     pub const fn get_rook_attacks_move(&self, pos: Move) -> Self {
         self.get_rook_attacks(pos.flatten() as _)
     }
@@ -241,7 +251,7 @@ impl Display for Board {
         }
         
         writeln!(f, "\n     a b c d e f g h")?;
-        write!(f, "     bitboard: {bitboard}")
+        write!(f, "     bitboard: 0x{bitboard:X}")
     }
 }
 
@@ -370,6 +380,10 @@ fn main() {
     let pos = Move::G6;
     println!("\nknight attacks from {pos}: ");
     println!("{}", Board::get_knight_attacks_move(pos));
+
+    let pos = Move::E5;
+    println!("\nqueen attacks from {pos}: ");
+    println!("{}", board.get_queen_attacks_move(pos));
 }
 
 /* TODO:
