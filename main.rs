@@ -12,6 +12,28 @@ static_assert!(Board::HEIGHT <= std::mem::size_of::<u64>(), "board height is too
 
 pub type Offset = (i8, i8);
 
+pub const KNIGHT_OFFSET_BOARDS: [Board; Board::SIZE] = const {
+    Board::from_offsets_for_each(&[
+        (2, 1), (2, -1), (-2, 1), (-2, -1),
+        (1, 2), (1, -2), (-1, 2), (-1, -2),
+    ])
+};
+
+pub const KING_OFFSET_BOARDS: [Board; Board::SIZE] = const {
+    Board::from_offsets_for_each(&[
+        (1, 0), (-1, 0), (0, 1), (0, -1),
+        (1, 1), (1, -1), (-1, 1), (-1, -1),
+    ])
+};
+
+pub const BLACK_PAWN_OFFSET_BOARDS: [Board; Board::SIZE] = const {
+    Board::from_offsets_for_each(&[(1, -1), (1, 1)])
+};
+
+pub const WHITE_PAWN_OFFSET_BOARDS: [Board; Board::SIZE] = const {
+    Board::from_offsets_for_each(&[(-1, -1), (-1, 1)])
+};
+
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
 pub enum Move {
@@ -143,6 +165,21 @@ impl Board {
     }
 
     #[inline(always)]
+    pub const fn get_white_pawn_attacks(&self, square: usize) -> Self {
+        WHITE_PAWN_OFFSET_BOARDS[square]
+    }
+
+    #[inline(always)]
+    pub const fn get_black_pawn_attacks(&self, square: usize) -> Self {
+        BLACK_PAWN_OFFSET_BOARDS[square]
+    }
+
+    #[inline(always)]
+    pub const fn get_king_attacks(&self, square: usize) -> Self {
+        KING_OFFSET_BOARDS[square]
+    }
+
+    #[inline(always)]
     pub const fn get_queen_attacks(&self, square: usize) -> Self {
         Self(self.get_rook_attacks(square).0 | self.get_bishop_attacks(square).0)
     }
@@ -172,6 +209,21 @@ impl Board {
 	    occupancy >>= Board::SIZE as u8 - BISHOP_RELEVANT_BITS[square];
 
 	    Self(BISHOP_ATTACKS[square][occupancy as usize])
+    }
+
+    #[inline(always)]
+    pub const fn get_white_pawn_attacks_move(&self, pos: Move) -> Self {
+        self.get_white_pawn_attacks(pos.flatten() as _)
+    }
+
+    #[inline(always)]
+    pub const fn get_black_pawn_attacks_move(&self, pos: Move) -> Self {
+        self.get_black_pawn_attacks(pos.flatten() as _)
+    }
+
+    #[inline(always)]
+    pub const fn get_king_attacks_move(&self, pos: Move) -> Self {
+        self.get_king_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
@@ -351,13 +403,6 @@ impl Boards {
     }
 }
 
-pub const KNIGHT_OFFSET_BOARDS: [Board; Board::SIZE] = {
-    Board::from_offsets_for_each(&[
-        (2, 1), (2, -1), (-2, 1), (-2, -1),
-        (1, 2), (1, -2), (-1, 2), (-1, -2),
-    ])
-};
-
 fn main() {
     let mut board = Board::new();
     board.set_bit_move(Move::E4, true);
@@ -384,9 +429,20 @@ fn main() {
     let pos = Move::E5;
     println!("\nqueen attacks from {pos}: ");
     println!("{}", board.get_queen_attacks_move(pos));
+
+    let pos = Move::A1;
+    println!("\nking attacks from {pos}: ");
+    println!("{}", board.get_king_attacks_move(pos));
+
+    let pos = Move::F2;
+    println!("\nwhite pawn attacks from {pos}: ");
+    println!("{}", board.get_white_pawn_attacks_move(pos));
+
+    let pos = Move::F7;
+    println!("\nblack pawn attacks from {pos}: ");
+    println!("{}", board.get_black_pawn_attacks_move(pos));
 }
 
 /* TODO:
-    Magic bit boards,
-    Offsets for king and pawn
+    `move` functions for `Boards` structure
 */
