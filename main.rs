@@ -36,7 +36,7 @@ pub const WHITE_PAWN_OFFSET_BOARDS: [Board; Board::SIZE] = const {
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug)]
-pub enum Move {
+pub enum Square {
     A8, B8, C8, D8, E8, F8, G8, H8,
     A7, B7, C7, D7, E7, F7, G7, H7,
     A6, B6, C6, D6, E6, F6, G6, H6,
@@ -47,7 +47,7 @@ pub enum Move {
     A1, B1, C1, D1, E1, F1, G1, H1,
 }
 
-impl Move {
+impl Square {
     pub const fn flatten(&self) -> u8 {
         *self as _
     }
@@ -71,7 +71,7 @@ impl Move {
     }
 }
 
-impl Display for Move {
+impl Display for Square {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let idx = *self as usize;
@@ -145,7 +145,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn get_bit_move(&self, pos: Move) -> bool {
+    pub const fn get_bit_square(&self, pos: Square) -> bool {
         self.get_bit(pos.flatten() as _)
     }
 
@@ -155,7 +155,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn set_bit_move(&mut self, pos: Move, value: bool) {
+    pub const fn set_bit_square(&mut self, pos: Square, value: bool) {
         self.set_bit(pos.flatten() as _, value)
     }
 
@@ -212,37 +212,37 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn get_white_pawn_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_white_pawn_attacks_square(&self, pos: Square) -> Self {
         self.get_white_pawn_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_black_pawn_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_black_pawn_attacks_square(&self, pos: Square) -> Self {
         self.get_black_pawn_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_king_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_king_attacks_square(&self, pos: Square) -> Self {
         self.get_king_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_queen_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_queen_attacks_square(&self, pos: Square) -> Self {
         self.get_queen_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_knight_attacks_move(pos: Move) -> Self {
+    pub const fn get_knight_attacks_square(pos: Square) -> Self {
         Self::get_knight_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_bishop_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_bishop_attacks_square(&self, pos: Square) -> Self {
         self.get_bishop_attacks(pos.flatten() as _)
     }
 
     #[inline(always)]
-    pub const fn get_rook_attacks_move(&self, pos: Move) -> Self {
+    pub const fn get_rook_attacks_square(&self, pos: Square) -> Self {
         self.get_rook_attacks(pos.flatten() as _)
     }
 
@@ -265,8 +265,8 @@ impl Board {
             let new_row = row + dr;
             let new_col = col + dc;
             if !(new_row < 0 || new_col < 0) {
-                if let Ok(mov) = Move::try_from_2d((new_row as u8, new_col as u8)) {
-                    board.set_bit_move(mov, true);
+                if let Ok(mov) = Square::try_from_2d((new_row as u8, new_col as u8)) {
+                    board.set_bit_square(mov, true);
                 }
             } i += 1;
         }
@@ -405,42 +405,42 @@ impl Boards {
 
 fn main() {
     let mut board = Board::new();
-    board.set_bit_move(Move::E4, true);
-    board.set_bit_move(Move::G2, true);
-    board.set_bit_move(Move::D3, true);
-    board.set_bit_move(Move::B8, true);
-    board.set_bit_move(Move::C5, true);
+    board.set_bit_square(Square::E4, true);
+    board.set_bit_square(Square::G2, true);
+    board.set_bit_square(Square::D3, true);
+    board.set_bit_square(Square::B8, true);
+    board.set_bit_square(Square::C5, true);
 
     println!("board occupation: ");
     println!("{board}");
 
-    let pos = Move::E5;
+    let pos = Square::E5;
     println!("\nrook attacks from {pos}: ");
-    println!("{}", board.get_rook_attacks_move(pos));
+    println!("{}", board.get_rook_attacks_square(pos));
 
-    let pos = Move::G6;
+    let pos = Square::G6;
     println!("\nbishop attacks from {pos}: ");
-    println!("{}", board.get_bishop_attacks_move(pos));
+    println!("{}", board.get_bishop_attacks_square(pos));
 
-    let pos = Move::G6;
+    let pos = Square::G6;
     println!("\nknight attacks from {pos}: ");
-    println!("{}", Board::get_knight_attacks_move(pos));
+    println!("{}", Board::get_knight_attacks_square(pos));
 
-    let pos = Move::E5;
+    let pos = Square::E5;
     println!("\nqueen attacks from {pos}: ");
-    println!("{}", board.get_queen_attacks_move(pos));
+    println!("{}", board.get_queen_attacks_square(pos));
 
-    let pos = Move::A1;
+    let pos = Square::A1;
     println!("\nking attacks from {pos}: ");
-    println!("{}", board.get_king_attacks_move(pos));
+    println!("{}", board.get_king_attacks_square(pos));
 
-    let pos = Move::F2;
+    let pos = Square::F2;
     println!("\nwhite pawn attacks from {pos}: ");
-    println!("{}", board.get_white_pawn_attacks_move(pos));
+    println!("{}", board.get_white_pawn_attacks_square(pos));
 
-    let pos = Move::F7;
+    let pos = Square::F7;
     println!("\nblack pawn attacks from {pos}: ");
-    println!("{}", board.get_black_pawn_attacks_move(pos));
+    println!("{}", board.get_black_pawn_attacks_square(pos));
 }
 
 /* TODO:
