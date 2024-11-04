@@ -1,4 +1,6 @@
 *.c
+*.txt
+
 eval
 raxon
 magics
