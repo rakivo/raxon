@@ -5,7 +5,7 @@ eval
 raxon
 magics
 target
+psqt.rs
 magic.rs
 Cargo.lock
-Cargo.toml
 print_magic

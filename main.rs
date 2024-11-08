@@ -60,32 +60,50 @@ macro_rules! gen_from_to_index {
     };
 }
 
-static_assert!(Board::WIDTH <= std::mem::size_of::<u64>(), "board width is too big");
-static_assert!(Board::HEIGHT <= std::mem::size_of::<u64>(), "board height is too big");
+macro_rules! legal_moves {
+    ($self: expr, $moves: ident, $color: tt) => { paste::paste! {
+        $self.[<iter_ $color s>]().zip(Self::[<$color:upper S>]).flat_map(|(board, pieces)| {
+            board.iter().flat_map(move |src| {
+                match pieces {
+                    Pieces::[<$color:camel Pawns>]   => _Board::[<get_ $color _pawn_moves>](src, $self.[<$color s>]()),
+                    Pieces::[<$color:camel Knights>] => _Board::get_knight_moves(src, $self.[<$color s>]()),
+                    Pieces::[<$color:camel Bishops>] => board.get_bishop_moves(src, $self.occupancy(), $self.[<$color s>]()),
+                    Pieces::[<$color:camel Rooks>]   => board.get_rook_moves(src, $self.occupancy(), $self.[<$color s>]()),
+                    Pieces::[<$color:camel Queens>]  => board.get_queen_moves(src, $self.occupancy(), $self.[<$color s>]()),
+                    Pieces::[<$color:camel Kings>]   => _Board::get_king_moves(src, $self.[<$color s>]()),
+                    _ => unreachable!()
+                }.iter().map(move |dst| Move::new_from_index(src, dst))
+            })
+        }).collect::<mov::Vec>()
+    }}
+}
+
+static_assert!(_Board::WIDTH <= std::mem::size_of::<u64>(), "board width is too big");
+static_assert!(_Board::HEIGHT <= std::mem::size_of::<u64>(), "board height is too big");
 
 pub type Offset = (i8, i8);
 pub type Result<T> = std::result::Result::<T, ()>;
 
-pub const KNIGHT_OFFSET_BOARDS: [Board; Board::SIZE] = const {
-    Board::from_offsets_for_each(&[
+pub const KNIGHT_OFFSET_BOARDS: [_Board; _Board::SIZE] = const {
+    _Board::from_offsets_for_each(&[
         (2, 1), (2, -1), (-2, 1), (-2, -1),
         (1, 2), (1, -2), (-1, 2), (-1, -2),
     ])
 };
 
-pub const KING_OFFSET_BOARDS: [Board; Board::SIZE] = const {
-    Board::from_offsets_for_each(&[
+pub const KING_OFFSET_BOARDS: [_Board; _Board::SIZE] = const {
+    _Board::from_offsets_for_each(&[
         (1, 0), (-1, 0), (0, 1), (0, -1),
         (1, 1), (1, -1), (-1, 1), (-1, -1),
     ])
 };
 
-pub const BLACK_PAWN_OFFSET_BOARDS: [Board; Board::SIZE] = const {
-    Board::from_offsets_for_each(&[(1, -1), (1, 1)])
+pub const BLACK_PAWN_OFFSET_BOARDS: [_Board; _Board::SIZE] = const {
+    _Board::from_offsets_for_each(&[(1, -1), (1, 1), (1, 0)])
 };
 
-pub const WHITE_PAWN_OFFSET_BOARDS: [Board; Board::SIZE] = const {
-    Board::from_offsets_for_each(&[(-1, -1), (-1, 1)])
+pub const WHITE_PAWN_OFFSET_BOARDS: [_Board; _Board::SIZE] = const {
+    _Board::from_offsets_for_each(&[(-1, -1), (-1, 1)])
 };
 
 pub type _Score = i16;
@@ -98,12 +116,12 @@ impl Display for Score {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let w = self.0;
         let b = self.1;
-        write!(f, "w: {w}, b: {b}")
+        write!(f, "white: {w}, black: {b}")
     }
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Eq, Copy, Clone, Debug, PartialEq)]
 pub enum Piece {
     King   = 0,
     Queen  = 1,
@@ -181,12 +199,8 @@ impl Square {
     gen_from_to_index!{u8, if Self::H1.to_index() >= idx; "invalid idx"}
 
     #[inline(always)]
-    pub const fn try_from_2d((row, col): (u8, u8)) -> Result::<Self> {
-        if row < Board::HEIGHT as _ && col < Board::WIDTH as _ {
-            Ok(unsafe { std::mem::transmute(row * Board::HEIGHT as u8 + col) })
-        } else {
-            Err(())
-        }
+    pub const fn to_bit_index(&self) -> usize {
+        FLIP[self.to_index()]
     }
 
     #[inline(always)]
@@ -199,13 +213,15 @@ impl Square {
         self.to_index() >> 3
     }
 
+    // Swap A1 <-> A8
     #[inline(always)]
-    pub const fn flip_rank(&self) -> usize { // Swap A1 <-> A8
+    pub const fn flip_rank(&self) -> usize {
         self.to_index() ^ Self::A8.to_index()
     }
 
+    // Swap A1 <-> H1
     #[inline(always)]
-    pub const fn flip_file(&self) -> usize { // Swap A1 <-> H1
+    pub const fn flip_file(&self) -> usize {
         self.to_index() ^ Self::H1.to_index()
     }
 }
@@ -219,16 +235,16 @@ impl Display for Square {
             f,
             "{file_char}{rank}",
             file_char = (b'a' + file) as char,
-            rank = Board::WIDTH - idx / Board::HEIGHT
+            rank = _Board::WIDTH - idx / _Board::HEIGHT
         }
     }
 }
 
 #[repr(packed)]
 #[derive(Copy, Clone)]
-pub struct Board(u64);
+pub struct _Board(u64);
 
-impl Board {
+impl _Board {
     pub const WIDTH: usize = 8;
     pub const HEIGHT: usize = 8;
     pub const SIZE: usize = Self::WIDTH * Self::HEIGHT;
@@ -240,189 +256,190 @@ impl Board {
 
     #[inline(always)]
     pub const fn white_pawns() -> Self {
-        Self(0x0000_0000_0000_FF00)
-    }
-
-    #[inline(always)]
-    pub const fn black_pawns() -> Self {
         Self(0x00FF_0000_0000_0000)
     }
 
     #[inline(always)]
-    pub const fn white_knights() -> Self {
-        Self(0x0000_0000_0000_0042)
+    pub const fn black_pawns() -> Self {
+        Self(0x0000_0000_0000_FF00)
     }
 
     #[inline(always)]
-    pub const fn black_knights() -> Self {
+    pub const fn white_knights() -> Self {
         Self(0x4200_0000_0000_0000)
     }
 
     #[inline(always)]
-    pub const fn white_rooks() -> Self {
-        Self(0x0000_0000_0000_0081)
+    pub const fn black_knights() -> Self {
+        Self(0x0000_0000_0000_0042)
     }
 
     #[inline(always)]
-    pub const fn black_rooks() -> Self {
+    pub const fn white_rooks() -> Self {
         Self(0x8100_0000_0000_0000)
     }
 
     #[inline(always)]
-    pub const fn white_bishops() -> Self {
-        Self(0x0000_0000_0000_0024)
+    pub const fn black_rooks() -> Self {
+        Self(0x0000_0000_0000_0081)
     }
 
     #[inline(always)]
-    pub const fn black_bishops() -> Self {
+    pub const fn white_bishops() -> Self {
         Self(0x2400_0000_0000_0000)
     }
 
     #[inline(always)]
-    pub const fn white_queen() -> Self {
-        Self(0x0000_0000_0000_0008)
+    pub const fn black_bishops() -> Self {
+        Self(0x0000_0000_0000_0024)
     }
 
     #[inline(always)]
-    pub const fn black_queen() -> Self {
+    pub const fn white_queen() -> Self {
         Self(0x0800_0000_0000_0000)
     }
 
     #[inline(always)]
-    pub const fn white_king() -> Self {
-        Self(0x0000_0000_0000_0010)
+    pub const fn black_queen() -> Self {
+        Self(0x0000_0000_0000_0008)
     }
 
     #[inline(always)]
-    pub const fn black_king() -> Self {
+    pub const fn white_king() -> Self {
         Self(0x1000_0000_0000_0000)
     }
 
     #[inline(always)]
+    pub const fn black_king() -> Self {
+        Self(0x0000_0000_0000_0010)
+    }
+
+    #[inline(always)]
     pub const fn all_whites() -> Self {
-        Self(0x0000_0000_0000_FFFF)
+        Self(0xFFFF_0000_0000_0000)
     }
 
     #[inline(always)]
     pub const fn all_blacks() -> Self {
-        Self(0xFFFF_0000_0000_0000)
+        Self(0x0000_0000_0000_FFFF)
     }
     
     #[inline(always)]
     pub const fn clear(&mut self) {
-        *self = Self::new();
+        *self = Self::new()
     }
 
     #[inline(always)]
-    pub const fn clear_bit_square(&mut self, pos: Square) {
-        self.clear_bit(pos.to_index() as _)
+    pub const fn clear_bit_square(&mut self, pos: Square) -> &mut Self {
+        self.clear_bit(pos.to_bit_index() as _)
     }
 
     #[inline(always)]
-    pub const fn clear_bit(&mut self, pos: usize) {
-        self.set_bit(pos, false);
+    pub const fn clear_bit(&mut self, pos: usize) -> &mut Self {
+        self.set_bit(pos, false)
     }
 
     #[inline(always)]
     pub const fn get_bit_square(&self, pos: Square) -> bool {
-        self.get_bit(pos.to_index() as _)
+        self.get_bit(pos.to_bit_index() as _)
     }
 
     #[inline(always)]
     pub const fn get_bit(&self, pos: usize) -> bool {
-        self.0 & (1 << pos as u8) != 0u64
+        (self.0 >> pos) & 1 == 1
     }
 
     #[inline(always)]
-    pub const fn set_bit_square(&mut self, pos: Square, value: bool) {
-        self.set_bit(pos.to_index() as _, value)
+    pub const fn set_bit_square(&mut self, pos: Square, value: bool) -> &mut Self {
+        self.set_bit(pos.to_bit_index() as _, value)
     }
 
     #[inline(always)]
-    pub const fn set_bit(&mut self, pos: usize, value: bool) {
-        self.0 = (self.0 & !(1 << pos as u8)) | ((value as u64) << pos as u8)
+    pub const fn set_bit(&mut self, pos: usize, value: bool) -> &mut Self {
+        self.0 = (self.0 & !(1 << pos as u8)) | ((value as u64) << pos as u8);
+        self
     }
 
     #[inline(always)]
-    pub const fn get_white_pawn_attacks(square: usize) -> Self {
-        WHITE_PAWN_OFFSET_BOARDS[square]
+    pub const fn get_white_pawn_moves(square: usize, friendly: Self) -> Self {
+        Self(WHITE_PAWN_OFFSET_BOARDS[square].0 & !friendly.0)
     }
 
     #[inline(always)]
-    pub const fn get_black_pawn_attacks(square: usize) -> Self {
-        BLACK_PAWN_OFFSET_BOARDS[square]
+    pub const fn get_black_pawn_moves(square: usize, friendly: Self) -> Self {
+        Self(BLACK_PAWN_OFFSET_BOARDS[square].0 & !friendly.0)
     }
 
     #[inline(always)]
-    pub const fn get_king_attacks(square: usize) -> Self {
-        KING_OFFSET_BOARDS[square]
+    pub const fn get_king_moves(square: usize, friendly: Self) -> Self {
+        Self(KING_OFFSET_BOARDS[square].0 & !friendly.0)
     }
 
     #[inline(always)]
-    pub const fn get_queen_attacks(&self, square: usize) -> Self {
-        Self(self.get_rook_attacks(square).0 | self.get_bishop_attacks(square).0)
+    pub const fn get_queen_moves(&self, square: usize, occupancy: Self, friendly: Self) -> Self {
+        Self(self.get_rook_moves(square, occupancy, friendly).0 | self.get_bishop_moves(square, occupancy, friendly).0)
     }
 
     #[inline(always)]
-    pub const fn get_knight_attacks(square: usize) -> Self {
-        KNIGHT_OFFSET_BOARDS[square]
+    pub const fn get_knight_moves(square: usize, friendly: Self) -> Self {
+        Self(KNIGHT_OFFSET_BOARDS[square].0 & !friendly.0)
     }
 
     #[inline(always)]
-    pub const fn get_rook_attacks(&self, square: usize) -> Self {
-        let Board(mut occupancy) = *self;
+    pub const fn get_rook_moves(&self, square: usize, occupancy: Self, friendly: Self) -> Self {
+        let Self(mut occupancy) = occupancy;
 
 	    occupancy &= ROOK_MASKS[square];
 	    occupancy *= ROOK_MAGICS[square];
-	    occupancy >>= Board::SIZE as u8 - ROOK_RELEVANT_BITS[square];
+	    occupancy >>= _Board::SIZE as u8 - ROOK_RELEVANT_BITS[square];
 
-	    Self(ROOK_ATTACKS[square][occupancy as usize])
+	    Self((ROOK_ATTACKS[square][occupancy as usize] & !friendly.0) | (1 << square))
     }
 
     #[inline(always)]
-    pub const fn get_bishop_attacks(&self, square: usize) -> Self {
-        let Board(mut occupancy) = *self;
+    pub const fn get_bishop_moves(&self, square: usize, occupancy: Self, friendly: Self) -> Self {
+        let Self(mut occupancy) = occupancy;
 
 	    occupancy &= BISHOP_MASKS[square];
 	    occupancy *= BISHOP_MAGICS[square];
-	    occupancy >>= Board::SIZE as u8 - BISHOP_RELEVANT_BITS[square];
+	    occupancy >>= _Board::SIZE as u8 - BISHOP_RELEVANT_BITS[square];
 
-	    Self(BISHOP_ATTACKS[square][occupancy as usize])
+        Self((BISHOP_ATTACKS[square][occupancy as usize] & !friendly.0) | (1 << square))
     }
 
     #[inline(always)]
-    pub const fn get_white_pawn_attacks_square(&self, pos: Square) -> Self {
-        Self::get_white_pawn_attacks(pos.to_index() as _)
+    pub const fn get_white_pawn_moves_square(&self, pos: Square, friendly: Self) -> Self {
+        Self::get_white_pawn_moves(pos.to_bit_index() as _, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_black_pawn_attacks_square(&self, pos: Square) -> Self {
-        Self::get_black_pawn_attacks(pos.to_index() as _)
+    pub const fn get_black_pawn_moves_square(&self, pos: Square, friendly: Self) -> Self {
+        Self::get_black_pawn_moves(pos.to_bit_index() as _, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_king_attacks_square(&self, pos: Square) -> Self {
-        Self::get_king_attacks(pos.to_index() as _)
+    pub const fn get_king_moves_square(&self, pos: Square, friendly: Self) -> Self {
+        Self::get_king_moves(pos.to_bit_index() as _, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_queen_attacks_square(&self, pos: Square) -> Self {
-        self.get_queen_attacks(pos.to_index() as _)
+    pub const fn get_queen_moves_square(&self, pos: Square, occupancy: Self, friendly: Self) -> Self {
+        self.get_queen_moves(pos.to_bit_index() as _, occupancy, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_knight_attacks_square(pos: Square) -> Self {
-        Self::get_knight_attacks(pos.to_index() as _)
+    pub const fn get_knight_moves_square(pos: Square, friendly: Self) -> Self {
+        Self::get_knight_moves(pos.to_bit_index() as _, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_bishop_attacks_square(&self, pos: Square) -> Self {
-        self.get_bishop_attacks(pos.to_index() as _)
+    pub const fn get_bishop_moves_square(&self, pos: Square, occupancy: Self, friendly: Self) -> Self {
+        self.get_bishop_moves(pos.to_bit_index() as _, occupancy, friendly)
     }
 
     #[inline(always)]
-    pub const fn get_rook_attacks_square(&self, pos: Square) -> Self {
-        self.get_rook_attacks(pos.to_index() as _)
+    pub const fn get_rook_moves_square(&self, pos: Square, occupancy: Self, friendly: Self) -> Self {
+        self.get_rook_moves(pos.to_bit_index() as _, occupancy, friendly)
     }
 
     #[inline(always)]
@@ -444,23 +461,19 @@ impl Board {
     }
 
     pub const fn from_offsets(offsets: &[Offset], pos: usize) -> Self {
-        let row = (pos / Self::HEIGHT) as i8;
-        let col = (pos % Self::WIDTH) as i8;
-
         let mut i = 0;
         let mut board = Self::new();
+        let row = (pos / Self::WIDTH) as i8;
+        let col = (pos % Self::WIDTH) as i8;
         while i < offsets.len() {
             let (dr, dc) = offsets[i];
             let new_row = row + dr;
             let new_col = col + dc;
-            if !(new_row < 0 || new_col < 0) {
-                if let Ok(mov) = Square::try_from_2d((new_row as u8, new_col as u8)) {
-                    board.set_bit_square(mov, true);
-                }
+            if new_row >= 0 && new_row < Self::WIDTH as i8 && new_col >= 0 && new_col < Self::WIDTH as i8 {
+                let new_pos = (new_row as usize * Self::WIDTH) + new_col as usize;
+                board.set_bit(new_pos, true);
             } i += 1;
-        }
-
-        board
+        } board
     }
 
     #[inline(always)]
@@ -474,29 +487,27 @@ impl Board {
     }
 }
 
-impl Display for Board {
+impl Display for _Board {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f)?;
         
-        let Board(bitboard) = *self;
+        let _Board(bitboard) = *self;
         for rank in 0..8 {
             for file in 0..8 {
-                let square = rank * 8 + file;
+                let square = rank * _Board::HEIGHT + file;
                 if file == 0 {
-                    write!(f, "  {rank} ", rank = 8 - rank)?;
-                }
-                write!(f, " {bit}", bit = if (bitboard >> square) & 1 == 1 { 1 } else { 0 })?;
-            }
-            
-            println!();
+                    write!(f, "  {rank} ", rank = _Board::HEIGHT - rank)?;
+                } 
+                write!(f, " {bit}", bit = if self.get_bit(square) { 1 } else { 0 })?;
+            } println!();
         }
         
         writeln!(f, "\n     a b c d e f g h")?;
-        write!(f, "     bitboard: 0x{bitboard:X}")
+        write!(f, "     bitboard: {bitboard:064b}")
     }
 }
 
-impl Debug for Board {
+impl Debug for _Board {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Display::fmt(&self, f)
@@ -504,7 +515,7 @@ impl Debug for Board {
 }
 
 pub struct BoardIterator {
-    board: Board,
+    board: _Board,
     pos: usize
 }
 
@@ -512,7 +523,7 @@ impl Iterator for BoardIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option::<Self::Item> {
-        while self.pos < Board::SIZE {
+        while self.pos < _Board::SIZE {
             let curr_pos = self.pos;
             self.pos += 1;
             if self.board.get_bit(curr_pos) {
@@ -588,69 +599,144 @@ impl Pieces {
 
     #[track_caller]
     #[inline(always)]
-    pub const fn init_board(&self) -> Board {
+    pub const fn init_board(&self) -> _Board {
         match self {
-            Self::WhitePawns   => Board::white_pawns(),
-            Self::BlackPawns   => Board::black_pawns(),
-            Self::WhiteRooks   => Board::white_rooks(),
-            Self::BlackRooks   => Board::black_rooks(),
-            Self::WhiteKnights => Board::white_knights(),
-            Self::BlackKnights => Board::black_knights(),
-            Self::WhiteBishops => Board::white_bishops(),
-            Self::BlackBishops => Board::black_bishops(),
-            Self::WhiteQueens  => Board::white_queen(),
-            Self::BlackQueens  => Board::black_queen(),
-            Self::WhiteKings   => Board::white_king(),
-            Self::BlackKings   => Board::black_king(),
-            Self::AllWhites    => Board::all_whites(),
-            Self::AllBlacks    => Board::all_blacks(),
+            Self::WhitePawns   => _Board::white_pawns(),
+            Self::BlackPawns   => _Board::black_pawns(),
+            Self::WhiteRooks   => _Board::white_rooks(),
+            Self::BlackRooks   => _Board::black_rooks(),
+            Self::WhiteKnights => _Board::white_knights(),
+            Self::BlackKnights => _Board::black_knights(),
+            Self::WhiteBishops => _Board::white_bishops(),
+            Self::BlackBishops => _Board::black_bishops(),
+            Self::WhiteQueens  => _Board::white_queen(),
+            Self::BlackQueens  => _Board::black_queen(),
+            Self::WhiteKings   => _Board::white_king(),
+            Self::BlackKings   => _Board::black_king(),
+            Self::AllWhites    => _Board::all_whites(),
+            Self::AllBlacks    => _Board::all_blacks(),
             _ => unreachable!()
         }
     }
 }
 
-#[derive(Debug)]
-pub struct Boards([Board; Pieces::_RESERVED_PIECES_COUNT.to_index()]);
+mod mov {
+    pub const CAP: usize = 128;
+    pub type Vec = smallvec::SmallVec::<[super::Move; CAP]>;
+}
 
-impl Boards {
+#[repr(packed)]
+#[derive(Eq, Copy, Clone, Debug, PartialEq)]
+// pub struct Move(u16);
+pub struct Move(usize, usize, Option::<Piece>);
+
+impl Move {
+    // #[inline(always)]
+    // pub const fn new_from_index_promotion(src: usize, dst: usize, promotion: Option::<Piece>) -> Self {
+    //     let promotion_bits = match promotion {
+    //         Some(piece) => (piece as u16) << 12,
+    //         None => 0,
+    //     };
+    //     Self((src as u16) | ((dst as u16) << 6) | promotion_bits)
+    // }
+
+    #[inline(always)]
+    pub const fn new_from_index_promotion(src: usize, dst: usize, promotion: Option::<Piece>) -> Self {
+        Self(src, dst, promotion)
+    }
+
+    #[inline(always)]
+    pub const fn new_from_index(src: usize, dst: usize) -> Self {
+        Self::new_from_index_promotion(src, dst, None)
+    }
+
+    #[inline(always)]
+    pub const fn new_from_square_promotion(src: Square, dst: Square, promotion: Option::<Piece>) -> Self {
+        Self::new_from_index_promotion(src.to_bit_index(), dst.to_bit_index(), promotion)
+    }
+
+    #[inline(always)]
+    pub const fn new_from_square(src: Square, dst: Square) -> Self {
+        Self::new_from_index(src.to_bit_index(), dst.to_bit_index())
+    }
+
+    #[inline(always)]
+    pub const fn from_square(self) -> Square {
+        Square::from_index(self.0)
+        // Square::from_index((self.0 & 0x3F) as _)
+    }
+
+    #[inline(always)]
+    pub const fn to_square(self) -> Square {
+        // Square::from_index(((self.0 >> 6) & 0x3F) as _)
+        Square::from_index(self.1)
+    }
+
+    #[inline(always)]
+    pub const fn promotion(self) -> Option::<Piece> {
+        self.2
+        // match (self.0 >> 12) & 0xF {
+        //     0 => None,
+        //     x @ _ => Some(Piece::from_index(x as _))
+        // }
+    }
+}
+
+impl Display for Move {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!{
+            f,
+            "from: {from}, to: {to}, promotion: {prom:?}",
+            from = self.from_square(),
+            to = self.to_square(),
+            prom = self.promotion()
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct Board {
+    boards: [_Board; Pieces::_RESERVED_PIECES_COUNT.to_index()],
+    turn: bool, // true -> white, false -> black
+}
+
+impl Board {
     #[inline(always)]
     pub const fn new() -> Self {
-        Self([
-            Pieces::WhitePawns.init_board(),
-            Pieces::BlackPawns.init_board(),
-            Pieces::WhiteKnights.init_board(),
-            Pieces::BlackKnights.init_board(),
-            Pieces::WhiteBishops.init_board(),
-            Pieces::BlackBishops.init_board(),
-            Pieces::WhiteRooks.init_board(),
-            Pieces::BlackRooks.init_board(),
-            Pieces::WhiteQueens.init_board(),
-            Pieces::BlackQueens.init_board(),
-            Pieces::WhiteKings.init_board(),
-            Pieces::BlackKings.init_board(),
-            Pieces::AllWhites.init_board(),
-            Pieces::AllBlacks.init_board(),
-        ])
-    }
-
-    #[inline]
-    pub const fn not_alls_count() -> usize {
-        Pieces::_RESERVED_PIECES_COUNT.to_index() - 2
-    }
-
-    #[inline(always)]
-    pub const fn pieces(&self, pieces: Pieces) -> &Board {
-        &self.0[pieces as usize]
+        Self {
+            boards: [
+                Pieces::WhitePawns.init_board(),
+                Pieces::BlackPawns.init_board(),
+                Pieces::WhiteKnights.init_board(),
+                Pieces::BlackKnights.init_board(),
+                Pieces::WhiteBishops.init_board(),
+                Pieces::BlackBishops.init_board(),
+                Pieces::WhiteRooks.init_board(),
+                Pieces::BlackRooks.init_board(),
+                Pieces::WhiteQueens.init_board(),
+                Pieces::BlackQueens.init_board(),
+                Pieces::WhiteKings.init_board(),
+                Pieces::BlackKings.init_board(),
+                Pieces::AllWhites.init_board(),
+                Pieces::AllBlacks.init_board(),
+            ],
+            turn: true
+        }
     }
 
     #[inline(always)]
-    pub const fn pieces_mut(&mut self, pieces: Pieces) -> &mut Board {
-        &mut self.0[pieces as usize]
+    pub const fn pieces(&self, pieces: Pieces) -> &_Board {
+        &self.boards[pieces as usize]
+    }
+
+    #[inline(always)]
+    pub const fn pieces_mut(&mut self, pieces: Pieces) -> &mut _Board {
+        &mut self.boards[pieces as usize]
     }
 
     #[inline(always)]
     pub const fn pieces_count(&self, pieces: Pieces) -> usize {
-        self.0[pieces as usize].count()
+        self.boards[pieces as usize].count()
     }
 
     // get piece kind at `src`th bit
@@ -659,39 +745,48 @@ impl Boards {
     pub const fn get_kind(&self, src: usize) -> Pieces {
         let mut i = 0;
         while i < Pieces::_RESERVED_PIECES_COUNT.to_index() - 2 {
-            if self.0[i].get_bit(src) {
+            if self.boards[i].get_bit(src) {
                 return Pieces::from_index(i)
             } i += 1;
         } unreachable!()
     }
 
+    pub const WHITES: [Pieces; 6] = [
+        Pieces::WhitePawns,
+        Pieces::WhiteKnights,
+        Pieces::WhiteBishops,
+        Pieces::WhiteRooks,
+        Pieces::WhiteQueens,
+        Pieces::WhiteKings,
+    ];
+
     #[inline(always)]
-    pub fn iter_whites(&self) -> impl Iterator::<Item = Board> + '_ {
-        [
-            Pieces::WhitePawns,
-            Pieces::WhiteKnights,
-            Pieces::WhiteBishops,
-            Pieces::WhiteRooks,
-            Pieces::WhiteQueens,
-            Pieces::WhiteKings,
-        ].into_iter().map(|pieces| *self.pieces(pieces)).into_iter()
+    pub fn iter_whites(&self) -> impl Iterator::<Item = _Board> + '_ {
+        Self::WHITES.into_iter().map(|pieces| *self.pieces(pieces)).into_iter()
+    }
+
+    pub const BLACKS: [Pieces; 6] = [
+        Pieces::BlackPawns,
+        Pieces::BlackKnights,
+        Pieces::BlackBishops,
+        Pieces::BlackRooks,
+        Pieces::BlackQueens,
+        Pieces::BlackKings,
+    ];
+
+    #[inline(always)]
+    pub fn iter_blacks(&self) -> impl Iterator::<Item = _Board> + '_ {
+        Self::BLACKS.into_iter().map(|pieces| *self.pieces(pieces)).into_iter()
     }
 
     #[inline(always)]
-    pub fn iter_blacks(&self) -> impl Iterator::<Item = Board> + '_ {
-        [
-            Pieces::BlackPawns,
-            Pieces::BlackKnights,
-            Pieces::BlackBishops,
-            Pieces::BlackRooks,
-            Pieces::BlackQueens,
-            Pieces::BlackKings,
-        ].into_iter().map(|pieces| *self.pieces(pieces)).into_iter()
+    pub fn iter_pair(&self) -> impl Iterator::<Item = (_Board, _Board)> + '_ {
+        self.iter_whites().zip(self.iter_blacks()).into_iter()
     }
 
     #[inline(always)]
-    pub fn iter(&self) -> impl Iterator::<Item = Board> + '_ {
-        self.iter_whites().chain(self.iter_blacks()).into_iter()
+    pub fn iter(&self) -> impl Iterator::<Item = _Board> + '_ {
+        self.boards.into_iter().take(Pieces::_RESERVED_PIECES_COUNT.to_index() - 2)
     }
 
     #[inline(always)]
@@ -732,16 +827,42 @@ impl Boards {
             self.pieces_mut(Pieces::AllBlacks).clear_bit(src);
             self.pieces_mut(Pieces::AllBlacks).set_bit(dst, true);
         }
+
+        self.turn = !self.turn;
     }
 
     #[inline(always)]
     pub const fn make_move(&mut self, src: Square, dst: Square) {
-        self.make_move_index(src.to_index(), dst.to_index())
+        self.make_move_index(src.to_bit_index(), dst.to_bit_index());
+    }
+
+    #[inline(always)]
+    pub const fn blacks(&self) -> _Board {
+        _Board(self.pieces(Pieces::AllBlacks).0)
+    }
+
+    #[inline(always)]
+    pub const fn whites(&self) -> _Board {
+        _Board(self.pieces(Pieces::AllWhites).0)
+    }
+
+    #[inline(always)]
+    pub const fn occupancy(&self) -> _Board {
+        _Board(self.pieces(Pieces::AllWhites).0 | self.pieces(Pieces::AllBlacks).0)
+    }
+
+    #[inline]
+    pub fn legal_moves(&self) -> mov::Vec {
+        if self.turn {
+            legal_moves!(self, moves, white)
+        } else {
+            legal_moves!(self, moves, black)
+        }
     }
 
     #[inline]
     pub fn evaluate(&self) -> Score {
-        const fn next(board: &mut Board) -> usize {
+        const fn next(board: &mut _Board) -> usize {
             let pos = board.0.trailing_zeros();
             board.0 ^= 0x1u64 << pos;
             pos as _
@@ -770,10 +891,10 @@ impl Boards {
     }
 }
 
-impl std::fmt::Display for Boards {
+impl Display for Board {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut char_board = ['.'; 64];
-        for (idx, board) in self.0.iter().take(Pieces::_RESERVED_PIECES_COUNT.to_index() - 2).enumerate() {
+        for (idx, board) in self.iter().enumerate() {
             let piece_char = Pieces::from_index(idx).to_char();
 
             for pos in board.iter() {
@@ -785,18 +906,19 @@ impl std::fmt::Display for Boards {
         for rank in (0..8).rev() {
             write!(f, " |")?;
             for file in 0..8 {
-                let pos = rank * Board::WIDTH + file;
+                let pos = ((_Board::HEIGHT - 1 - rank) * _Board::WIDTH) + file;
                 write!(f, " {0}", char_board[pos])?;
             }
             writeln!(f, " | {0}", rank + 1)?;
         }
         writeln!(f, " +-----------------+")?;
-        write!(f, "   a b c d e f g h")
+        writeln!(f, "   a b c d e f g h")?;
+        write!(f, "turn: {color}", color = if self.turn { "white" } else { "black" })
     }
 }
 
 fn main() {
-    let mut boards = Boards::new();
+    let mut board = Board::new();
     // boards.make_move(Square::E2, Square::E4);
     // boards.make_move(Square::D7, Square::D5);
     // boards.make_move(Square::B1, Square::C3);
@@ -804,13 +926,14 @@ fn main() {
     // boards.make_move(Square::F2, Square::F3);
     // boards.make_move(Square::F2, Square::F3);
 
-    boards.make_move(Square::D2, Square::D4);
-    boards.make_move(Square::E2, Square::E4);
-    boards.make_move(Square::F2, Square::F4);
+    board.make_move(Square::D2, Square::D4);
+    board.make_move(Square::E7, Square::E5);
+    board.make_move(Square::F2, Square::F4);
 
     // boards.make_move(Square::D8, Square::D5);
-    // println!("A8: {}", Square::A8.to_index());
+    println!("{board}");
+    println!("evaluation: {}", board.evaluate());
+    board.legal_moves().iter().for_each(|mov| println!("{mov}"));
 
-    println!("{boards}");
-    println!("{}", boards.evaluate());
+    // println!("{boards}");
 }

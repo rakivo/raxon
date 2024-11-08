@@ -1,0 +1,12 @@
+[package]
+name = "raxon"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "raxon"
+path = "main.rs"
+
+[dependencies]
+paste = "1.0.15"
+smallvec = { version = "1.13.2", default-features = false }
