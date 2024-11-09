@@ -458,6 +458,90 @@ const fn rook_attacks_on_the_fly(square: u64, block: u64) -> u64 {
     attacks
 }
 
+fn get_pawn_moves() -> ([u64; 64], [u64; 64], [u64; 64], [u64; 64]) {
+    let mut single_push_white   = [0u64; 64];
+    let mut single_push_black   = [0u64; 64];
+    let mut double_push_white   = [0u64; 64];
+    let mut double_push_black   = [0u64; 64];
+    let mut capture_left_white  = [0u64; 64];
+    let mut capture_right_white = [0u64; 64];
+    let mut capture_left_black  = [0u64; 64];
+    let mut capture_right_black = [0u64; 64];
+
+    #[inline(always)]
+    const fn flip_square_vertically(square: usize) -> usize {
+        (8 - 1 - square / 8) * 8 + square % 8
+    }
+
+    for _square in 0..64 {
+        let col = _square % 8;
+        let square = flip_square_vertically(_square);
+        let bit = 1u64 << _square;
+
+        if square < 56 {
+            single_push_black[square] = bit << 8;
+        }
+
+        if square >= 8 {
+            single_push_white[square] = bit >> 8;
+        }
+
+        if square >= 8 && square < 16 {
+            double_push_white[square] = bit >> 16;
+        }
+
+        if square >= 48 && square < 56 {
+            double_push_black[square] = bit << 16;
+        }
+
+        if col != 0 && square < 56 {
+            capture_left_black[square] = bit << 7;
+        }
+
+        if col != 7 && square < 56 {
+            capture_right_black[square] = bit << 9;
+        }
+
+        if col != 0 && square >= 8 {
+            capture_right_white[square] = bit >> 9;
+        }
+
+        if col != 7 && square >= 8 {
+            capture_left_white[square] = bit >> 7;
+        }
+    }
+
+    let mut white_pawn_moves = [0u64; 64];
+    for i in 0..64 {
+        // stay still square
+        let square = flip_square_vertically(i);
+        white_pawn_moves[i] = 1u64 << square |
+        single_push_white[i]  |
+        double_push_white[i];
+    }
+
+    let mut black_pawn_moves = [0u64; 64];
+    for i in 0..64 {
+        // stay still square
+        let square = flip_square_vertically(i);
+        black_pawn_moves[i] = 1u64 << square |
+        single_push_black[i]  |
+        double_push_black[i];
+    }
+
+    let mut white_pawn_attacks = [0u64; 64];
+    for i in 0..64 {
+        white_pawn_attacks[i] = capture_left_white [i] | capture_right_white[i];
+    }
+
+    let mut black_pawn_attacks = [0u64; 64];
+    for i in 0..64 {
+        black_pawn_attacks[i] = capture_left_black [i] | capture_right_black[i];
+    }
+
+    (white_pawn_moves, black_pawn_moves, white_pawn_attacks, black_pawn_attacks)
+}
+
 fn print_relevant_bits() {
     print!("pub const ROOK_RELEVANT_BITS: [u8; 64] = [");
     for value in ROOK_RELEVANT_BITS.iter() {
@@ -507,6 +591,32 @@ fn print_constants() {
             print!("{value:#018x}, ");
         }
         print!("],");
+    }
+    println!("];");
+
+    let (white_pawn_moves, black_pawn_moves, white_pawn_attacks, black_pawn_attacks) = get_pawn_moves();
+
+    print!("pub const WHITE_PAWN_MOVES: [u64; 64] = [");
+    for value in white_pawn_moves.iter() {
+        print!("{value:#018x},");
+    }
+    println!("];");
+
+    print!("pub const WHITE_PAWN_ATTACKS: [u64; 64] = [");
+    for value in white_pawn_attacks.iter() {
+        print!("{value:#018x},");
+    }
+    println!("];");
+
+    print!("pub const BLACK_PAWN_MOVES: [u64; 64] = [");
+    for value in black_pawn_moves.iter() {
+        print!("{value:#018x},");
+    }
+    println!("];");
+
+    print!("pub const BLACK_PAWN_ATTACKS: [u64; 64] = [");
+    for value in black_pawn_attacks.iter() {
+        print!("{value:#018x},");
     }
     println!("];");
 }
