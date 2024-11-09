@@ -1,9 +1,7 @@
-#[macro_export]
 macro_rules! static_assert {
     ($constexpr: expr, $($msg: tt) *) => { const _: () = assert!($constexpr, $($msg) *); }
 }
 
-#[macro_export]
 macro_rules! gen_safe_unsafe_getter {
     (pub const fn $name: tt ($($arg: tt: $ty: ty), *) -> $ret: ty {
         $($getter_code: tt) *
@@ -27,7 +25,6 @@ macro_rules! gen_safe_unsafe_getter {
     };
 }
 
-#[macro_export]
 macro_rules! gen_from_to_index {
     (if $safe_condition: expr; $($msg: tt) *) => {
         gen_safe_unsafe_getter!{
@@ -56,7 +53,6 @@ macro_rules! gen_from_to_index {
     };
 }
 
-#[macro_export]
 macro_rules! for_all_pieces {
     ($fn_name: ident -> $($ret: tt) *) => { paste::paste! {
         #[inline(always)]
