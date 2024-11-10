@@ -39,7 +39,8 @@ pub struct Score(pub _Score, pub _Score);
 impl Display for Score {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "white: {0}, black: {1}", self.0, self.1)
+        let (w, b) = (self.0, self.1);
+        write!(f, "white: {w}, black: {b}")
     }
 }
 
@@ -284,13 +285,13 @@ impl BitBoard {
     }
 
     #[inline(always)]
-    pub const fn get_white_pawn_moves(square: usize, occupancy: Self, friendly: Self) -> Self {
-        Self((WHITE_PAWN_MOVES[square] & !friendly.0) | (WHITE_PAWN_ATTACKS[square] & occupancy.0))
+    pub const fn get_white_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
+        Self((WHITE_PAWN_MOVES[square] & !friendly.0) | (WHITE_PAWN_ATTACKS[square] & enemy.0))
     }
 
     #[inline(always)]
-    pub const fn get_black_pawn_moves(square: usize, occupancy: Self, friendly: Self) -> Self {
-        Self((BLACK_PAWN_MOVES[square] & !friendly.0) | (BLACK_PAWN_ATTACKS[square] & occupancy.0))
+    pub const fn get_black_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
+        Self((BLACK_PAWN_MOVES[square] & !friendly.0) | (BLACK_PAWN_ATTACKS[square] & enemy.0))
     }
 
     #[inline(always)]
@@ -376,8 +377,8 @@ impl BitBoard {
     }
 
     #[inline(always)]
-    pub const fn iter(&self) -> BoardIterator {
-        BoardIterator {
+    pub const fn iter(&self) -> BitBoardIterator {
+        BitBoardIterator {
             board: *self,
             pos: 0
         }
@@ -437,12 +438,12 @@ impl Debug for BitBoard {
     }
 }
 
-pub struct BoardIterator {
+pub struct BitBoardIterator {
     board: BitBoard,
     pos: usize
 }
 
-impl Iterator for BoardIterator {
+impl Iterator for BitBoardIterator {
     type Item = usize;
 
     #[inline]
@@ -563,26 +564,30 @@ pub struct Move(u16);
 
 impl Move {
     #[inline(always)]
-    pub const fn new_from_index_promotion(src: usize, dst: usize, promotion: Option::<Piece>) -> Self {
-        let promotion_bits = match promotion {
+    pub fn new_from_index_promotion(src: usize, dst: usize, promotion: Option::<Piece>) -> Self {
+        #[cfg(debug_assertions)]
+        if src > 63 || dst > 63 {
+            panic!("{src} or {dst} is too big to be packed")
+        }
+
+        Self((src as u16) | ((dst as u16) << 6) | match promotion {
             Some(p) => (p as u16) << 12,
             _ => 0
-        };
-        Self((src as u16) | ((dst as u16) << 6) | promotion_bits)
+        })
     }
 
     #[inline(always)]
-    pub const fn new_from_index(src: usize, dst: usize) -> Self {
+    pub fn new_from_index(src: usize, dst: usize) -> Self {
         Self::new_from_index_promotion(src, dst, None)
     }
 
     #[inline(always)]
-    pub const fn new_from_square_promotion(src: Square, dst: Square, promotion: Option::<Piece>) -> Self {
+    pub fn new_from_square_promotion(src: Square, dst: Square, promotion: Option::<Piece>) -> Self {
         Self::new_from_index_promotion(src.to_bit_index(), dst.to_bit_index(), promotion)
     }
 
     #[inline(always)]
-    pub const fn new_from_square(src: Square, dst: Square) -> Self {
+    pub fn new_from_square(src: Square, dst: Square) -> Self {
         Self::new_from_index(src.to_bit_index(), dst.to_bit_index())
     }
 
@@ -592,13 +597,13 @@ impl Move {
     }
 
     #[inline(always)]
-    pub const fn from_bit_index(self) -> usize {
-        (self.0 & 0x3F) as _
+    pub const fn to_square(self) -> Square {
+        Square::from_index(((self.0 >> 6) & 0x3F) as _)
     }
 
     #[inline(always)]
-    pub const fn to_square(self) -> Square {
-        Square::from_index(((self.0 >> 6) & 0x3F) as _)
+    pub const fn from_bit_index(self) -> usize {
+        (self.0 & 0x3F) as _
     }
 
     #[inline(always)]
@@ -634,20 +639,46 @@ macro_rules! legal_moves {
         $self.[<iter_ $color s>]().zip(Self::[<$color:upper S>]).flat_map(|(board, pieces)| {
             board.iter().flat_map(move |src| {
                 match pieces {
-                    Pieces::[<$color:camel Pawns>]   => BitBoard::[<get_ $color _pawn_moves>](src, $self.occupancy(), *$self.[<all_ $color s>]()),
-                    Pieces::[<$color:camel Knights>] => BitBoard::get_knight_moves(src, *$self.[<all_ $color s>]()),
-                    Pieces::[<$color:camel Bishops>] => BitBoard::get_bishop_moves(src, $self.occupancy(), *$self.[<all_ $color s>]()),
-                    Pieces::[<$color:camel Rooks>]   => BitBoard::get_rook_moves(src, $self.occupancy(), *$self.[<all_ $color s>]()),
-                    Pieces::[<$color:camel Queens>]  => BitBoard::get_queen_moves(src, $self.occupancy(),* $self.[<all_ $color s>]()),
-                    Pieces::[<$color:camel Kings>]   => BitBoard::get_king_moves(src, *$self.[<all_ $color s>]()),
+                    Pieces::[<$color:camel Pawns>]   => BitBoard::[<get_ $color _pawn_moves>](src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Knights>] => BitBoard::get_knight_moves(src, $self.friendly()),
+                    Pieces::[<$color:camel Bishops>] => BitBoard::get_bishop_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Rooks>]   => BitBoard::get_rook_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Queens>]  => BitBoard::get_queen_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Kings>]   => BitBoard::get_king_moves(src, $self.friendly()),
                     _ => unreachable!()
                 }.iter().map(move |dst| mv![src, dst])
             })
         }).collect::<mv::Vec>()
+    }};
+
+    (.$self: expr, $moves: ident, $color: tt) => { paste::paste! {
+        $self.[<iter_ $color s>]().zip(Self::[<$color:upper S>]).flat_map(|(board, pieces)| {
+            board.iter().flat_map(move |src| {
+                match pieces {
+                    Pieces::[<$color:camel Pawns>]   => BitBoard::[<get_ $color _pawn_moves>](src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Knights>] => BitBoard::get_knight_moves(src, $self.friendly()),
+                    Pieces::[<$color:camel Bishops>] => BitBoard::get_bishop_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Rooks>]   => BitBoard::get_rook_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Queens>]  => BitBoard::get_queen_moves(src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Kings>]   => BitBoard::get_king_moves(src, $self.friendly()),
+                    _ => unreachable!()
+                }.iter().map(move |dst| {
+                    let mv = mv![src, dst];
+                    let mut zelf = *$self;
+                    zelf.make_move(mv);
+                    (zelf, mv)
+                })
+            })
+        }).collect::<board::Vec>()
     }}
 }
 
-#[derive(Debug)]
+mod board {
+    pub const CAP: usize = 128;
+    pub type Vec = smallvec::SmallVec::<[(super::Board, super::Move); CAP]>;
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct Board {
     boards: [BitBoard; Pieces::_RESERVED_PIECES_COUNT.to_index()],
     turn: bool, // true -> white, false -> black
@@ -664,7 +695,6 @@ impl Board {
                 Pieces::BlackKnights.init_board(),
                 Pieces::WhiteBishops.init_board(),
                 Pieces::BlackBishops.init_board(),
-                Pieces::WhiteRooks.init_board(),
                 Pieces::WhiteRooks.init_board(),
                 Pieces::BlackRooks.init_board(),
                 Pieces::WhiteQueens.init_board(),
@@ -795,6 +825,16 @@ impl Board {
     }
 
     #[inline(always)]
+    pub const fn friendly(&self) -> BitBoard {
+        if self.turn { *self.all_whites() } else { *self.all_blacks() }
+    }
+
+    #[inline(always)]
+    pub const fn enemy(&self) -> BitBoard {
+        if self.turn { *self.all_blacks() } else { *self.all_whites() }
+    }
+
+    #[inline(always)]
     pub const fn occupancy(&self) -> BitBoard {
         BitBoard(self.all_whites().0 | self.all_blacks().0)
     }
@@ -810,6 +850,15 @@ impl Board {
             legal_moves!(self, moves, white)
         } else {
             legal_moves!(self, moves, black)
+        }
+    }
+
+    #[inline]
+    pub fn legal_moves_boards(&self) -> board::Vec {
+        if self.turn {
+            legal_moves!(.self, moves, white)
+        } else {
+            legal_moves!(.self, moves, black)
         }
     }
 
@@ -877,11 +926,13 @@ fn main() {
     board.make_move(mv![.F2, .F4]);
     board.make_move(mv![.D8, .B3]);
     println!("{board}");
-    println!("evaluation: {}", board.evaluate());
-    board.legal_moves().iter().for_each(|mov| println!("{mov}"));
-    // println!("{boards}");
+    // println!("evaluation: {}", board.evaluate());
+    // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
+    board.legal_moves_boards().iter().for_each(|(board, mov)| println!("{board}\nMOVE: {mov}"));
+    // println!("{boards}")
 
-    // println!("{}", BitBoard(WHITE_PAWN_MOVES[A2.to_index()]));
-    println!("{}", BitBoard::get_white_pawn_moves_square(A2, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
+    // println!("{}", BitBoard(WHITE_PAWN_MOVES[A3.to_index()]));
+    // println!("{}", BitBoard::get_white_pawn_moves_square(A3, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
+    // println!("{}", BitBoard::get_white_pawn_moves_square(A4, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
     // println!("{}", BitBoard::get_queen_moves_square(A2, BitBoard::all_blacks(), BitBoard::all_whites()));
 }

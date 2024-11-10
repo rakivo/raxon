@@ -8,5 +8,5 @@ name = "raxon"
 path = "main.rs"
 
 [dependencies]
-paste = "1.0.15"
+paste = { version = "1.0.15", default-features = false }
 smallvec = { version = "1.13.2", default-features = false }

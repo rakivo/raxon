@@ -458,6 +458,22 @@ const fn rook_attacks_on_the_fly(square: u64, block: u64) -> u64 {
     attacks
 }
 
+#[allow(unused)]
+fn print_bitboard(bitboard: u64) {
+    for rank in 0..8 {
+        for file in 0..8 {
+            let square = rank * 8 + file;
+            if file == 0 {
+                print!("  {rank} ", rank = 8 - rank);
+            } 
+            print!(" {bit}", bit = if (bitboard >> square) & 1 == 1 { 1 } else { 0 });
+        } println!();
+    }
+    
+    println!("\n     a b c d e f g h");
+    println!("     bitboard: {bitboard:064b}")
+}
+
 fn get_pawn_moves() -> ([u64; 64], [u64; 64], [u64; 64], [u64; 64]) {
     let mut single_push_white   = [0u64; 64];
     let mut single_push_black   = [0u64; 64];
@@ -474,6 +490,7 @@ fn get_pawn_moves() -> ([u64; 64], [u64; 64], [u64; 64], [u64; 64]) {
     }
 
     for _square in 0..64 {
+        let row = _square / 8;
         let col = _square % 8;
         let square = flip_square_vertically(_square);
         let bit = 1u64 << _square;
@@ -486,11 +503,11 @@ fn get_pawn_moves() -> ([u64; 64], [u64; 64], [u64; 64], [u64; 64]) {
             single_push_white[square] = bit >> 8;
         }
 
-        if square >= 8 && square < 16 {
+        if row == 6 {
             double_push_white[square] = bit >> 16;
         }
 
-        if square >= 48 && square < 56 {
+        if row == 1 {
             double_push_black[square] = bit << 16;
         }
 
@@ -512,31 +529,15 @@ fn get_pawn_moves() -> ([u64; 64], [u64; 64], [u64; 64], [u64; 64]) {
     }
 
     let mut white_pawn_moves = [0u64; 64];
-    for i in 0..64 {
-        // stay still square
-        let square = flip_square_vertically(i);
-        white_pawn_moves[i] = 1u64 << square |
-        single_push_white[i]  |
-        double_push_white[i];
-    }
-
     let mut black_pawn_moves = [0u64; 64];
-    for i in 0..64 {
-        // stay still square
-        let square = flip_square_vertically(i);
-        black_pawn_moves[i] = 1u64 << square |
-        single_push_black[i]  |
-        double_push_black[i];
-    }
-
     let mut white_pawn_attacks = [0u64; 64];
-    for i in 0..64 {
-        white_pawn_attacks[i] = capture_left_white [i] | capture_right_white[i];
-    }
-
     let mut black_pawn_attacks = [0u64; 64];
+
     for i in 0..64 {
-        black_pawn_attacks[i] = capture_left_black [i] | capture_right_black[i];
+        white_pawn_moves[i] = single_push_white[i] | double_push_white[i];
+        black_pawn_moves[i] = single_push_black[i] | double_push_black[i];
+        white_pawn_attacks[i] = capture_left_white[i] | capture_right_white[i];
+        black_pawn_attacks[i] = capture_left_black[i] | capture_right_black[i];
     }
 
     (white_pawn_moves, black_pawn_moves, white_pawn_attacks, black_pawn_attacks)
