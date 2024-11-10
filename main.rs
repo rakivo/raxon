@@ -286,11 +286,13 @@ impl BitBoard {
 
     #[inline(always)]
     pub const fn get_white_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
+        let square = FLIP[square];
         Self((WHITE_PAWN_MOVES[square] & !friendly.0) | (WHITE_PAWN_ATTACKS[square] & enemy.0))
     }
 
     #[inline(always)]
     pub const fn get_black_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
+        let square = FLIP[square];
         Self((BLACK_PAWN_MOVES[square] & !friendly.0) | (BLACK_PAWN_ATTACKS[square] & enemy.0))
     }
 
@@ -333,12 +335,12 @@ impl BitBoard {
 
     #[inline(always)]
     pub const fn get_white_pawn_moves_square(pos: Square, occupancy: Self, friendly: Self) -> Self {
-        Self::get_white_pawn_moves(pos.to_index() as _, occupancy, friendly)
+        Self::get_white_pawn_moves(pos.to_bit_index() as _, occupancy, friendly)
     }
 
     #[inline(always)]
     pub const fn get_black_pawn_moves_square(pos: Square, occupancy: Self, friendly: Self) -> Self {
-        Self::get_black_pawn_moves(pos.to_index() as _, occupancy, friendly)
+        Self::get_black_pawn_moves(pos.to_bit_index() as _, occupancy, friendly)
     }
 
     #[inline(always)]
@@ -931,7 +933,8 @@ fn main() {
     board.legal_moves_boards().iter().for_each(|(board, mov)| println!("{board}\nMOVE: {mov}"));
     // println!("{boards}")
 
-    // println!("{}", BitBoard(WHITE_PAWN_MOVES[A3.to_index()]));
+    // println!("{}", D4.to_index());
+    // println!("{}", BitBoard(WHITE_PAWN_MOVES[D4.to_index()]));
     // println!("{}", BitBoard::get_white_pawn_moves_square(A3, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
     // println!("{}", BitBoard::get_white_pawn_moves_square(A4, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
     // println!("{}", BitBoard::get_queen_moves_square(A2, BitBoard::all_blacks(), BitBoard::all_whites()));
