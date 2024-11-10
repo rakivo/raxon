@@ -37,10 +37,9 @@ pub type _Score = i16;
 pub struct Score(pub _Score, pub _Score);
 
 impl Display for Score {
+    #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let w = self.0;
-        let b = self.1;
-        write!(f, "white: {w}, black: {b}")
+        write!(f, "white: {0}, black: {1}", self.0, self.1)
     }
 }
 
@@ -446,6 +445,7 @@ pub struct BoardIterator {
 impl Iterator for BoardIterator {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option::<Self::Item> {
         while self.pos < BitBoard::SIZE {
             let curr_pos = self.pos;
@@ -616,6 +616,7 @@ impl Move {
 }
 
 impl Display for Move {
+    #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!{
             f,
@@ -627,7 +628,7 @@ impl Display for Move {
     }
 }
 
-// it's just easier to turn have this fn-like macro here
+// it's just easier to have this fn-like macro here
 macro_rules! legal_moves {
     ($self: expr, $moves: ident, $color: tt) => { paste::paste! {
         $self.[<iter_ $color s>]().zip(Self::[<$color:upper S>]).flat_map(|(board, pieces)| {
@@ -663,6 +664,7 @@ impl Board {
                 Pieces::BlackKnights.init_board(),
                 Pieces::WhiteBishops.init_board(),
                 Pieces::BlackBishops.init_board(),
+                Pieces::WhiteRooks.init_board(),
                 Pieces::WhiteRooks.init_board(),
                 Pieces::BlackRooks.init_board(),
                 Pieces::WhiteQueens.init_board(),
