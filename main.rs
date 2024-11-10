@@ -665,10 +665,9 @@ macro_rules! legal_moves {
                     Pieces::[<$color:camel Kings>]   => BitBoard::get_king_moves(src, $self.friendly()),
                     _ => unreachable!()
                 }.iter().map(move |dst| {
-                    let mv = mv![src, dst];
                     let mut zelf = *$self;
-                    zelf.make_move(mv);
-                    (zelf, mv)
+                    zelf.make_move(mv![src, dst]);
+                    zelf
                 })
             })
         }).collect::<board::Vec>()
@@ -677,7 +676,7 @@ macro_rules! legal_moves {
 
 mod board {
     pub const CAP: usize = 128;
-    pub type Vec = smallvec::SmallVec::<[(super::Board, super::Move); CAP]>;
+    pub type Vec = smallvec::SmallVec::<[super::Board; CAP]>;
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -930,7 +929,8 @@ fn main() {
     println!("{board}");
     // println!("evaluation: {}", board.evaluate());
     // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
-    board.legal_moves_boards().iter().for_each(|(board, mov)| println!("{board}\nMOVE: {mov}"));
+    // println!("{}", board.legal_moves_boards().len());
+    board.legal_moves_boards().iter().for_each(|board| println!("{board}"));
     // println!("{boards}")
 
     // println!("{}", D4.to_index());
