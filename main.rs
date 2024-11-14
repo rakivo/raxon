@@ -30,7 +30,154 @@ pub const KING_OFFSET_BOARDS: [BitBoard; BitBoard::SIZE] = const {
     ])
 };
 
+pub const ALL_PIECES_COUNT: usize = Pieces::_RESERVED_PIECES_COUNT.to_index() - 2;
+
+#[inline(always)]
+pub const fn fen_byte_to_map_index(b: u8) -> usize {
+    (b - b'B') as usize
+}
+
+pub const FEN_MAP_SIZE: usize = fen_byte_to_map_index(b'r') + 1;
+
+pub const FEN_BB_MAP: [usize; FEN_MAP_SIZE] = const {
+    use Pieces::*;
+    let mut piece_map = [0; FEN_MAP_SIZE];
+    piece_map[fen_byte_to_map_index(b'P')] = WhitePawns.to_index();
+    piece_map[fen_byte_to_map_index(b'p')] = BlackPawns.to_index();
+    piece_map[fen_byte_to_map_index(b'N')] = WhiteKnights.to_index();
+    piece_map[fen_byte_to_map_index(b'n')] = BlackKnights.to_index();
+    piece_map[fen_byte_to_map_index(b'B')] = WhiteBishops.to_index();
+    piece_map[fen_byte_to_map_index(b'b')] = BlackBishops.to_index();
+    piece_map[fen_byte_to_map_index(b'R')] = WhiteRooks.to_index();
+    piece_map[fen_byte_to_map_index(b'r')] = BlackRooks.to_index();
+    piece_map[fen_byte_to_map_index(b'Q')] = WhiteQueens.to_index();
+    piece_map[fen_byte_to_map_index(b'q')] = BlackQueens.to_index();
+    piece_map[fen_byte_to_map_index(b'K')] = WhiteKings.to_index();
+    piece_map[fen_byte_to_map_index(b'k')] = BlackKings.to_index();
+    piece_map
+};
+
+pub type Turn = bool;
+
 pub type _Score = i16;
+
+#[repr(packed)]
+#[derive(Copy, Clone)]
+pub struct Castling(u8);
+
+impl Castling {
+    pub const WKS: u8 = 1 << 0;
+    pub const WQS: u8 = 1 << 1;
+    pub const BKS: u8 = 1 << 2;
+    pub const BQS: u8 = 1 << 3;
+    pub const WKS_AND_WQS: u8 = Self::WKS | Self::WQS;
+    pub const BKS_AND_BQS: u8 = Self::BKS | Self::BQS;
+
+    #[inline(always)]
+    pub const fn new() -> Self {
+        Self(0)
+    }
+
+    #[inline(always)]
+    pub const fn white_king_side() -> Self {
+        Self(Self::WKS)
+    }
+
+    #[inline(always)]
+    pub const fn white_queen_side() -> Self {
+        Self(Self::WQS)
+    }
+
+    #[inline(always)]
+    pub const fn white_king_and_queen_side() -> Self {
+        Self(Self::white_king_side().0 | Self::white_queen_side().0)
+    }
+
+    #[inline(always)]
+    pub const fn black_king_side() -> Self {
+        Self(Self::BKS)
+    }
+
+    #[inline(always)]
+    pub const fn black_queen_side() -> Self {
+        Self(Self::BQS)
+    }
+
+    #[inline(always)]
+    pub const fn black_king_and_queen_side() -> Self {
+        Self(Self::black_king_side().0 | Self::black_queen_side().0)
+    }
+
+    #[inline(always)]
+    pub const fn set(&mut self, var: CastlingVariant) {
+        use CastlingVariant::*;
+        *self = match var {
+            WhiteKingSide => Self::white_king_side(),
+            WhiteQueenSide => Self::white_queen_side(),
+            BlackKingSide => Self::black_king_side(),
+            BlackQueenSide => Self::black_queen_side(),
+            WhiteKingAndQueenSide => Self::white_king_and_queen_side(),
+            BlackKingAndQueenSide => Self::black_king_and_queen_side()
+        };
+    }
+
+    #[inline(always)]
+    pub const fn from_var(var: CastlingVariant) -> Self {
+        let mut castling = Self::new();
+        castling.set(var);
+        castling
+    }
+
+    #[inline]
+    pub const fn from_fen(castling: &str) -> Self {
+        let mut i = 0;
+        let bytes = castling.as_bytes();
+
+        let mut castling = 0;
+        while i < bytes.len() {
+            castling |= match bytes[i] {
+                b'K' => Self::white_king_side().0,
+                b'Q' => Self::white_queen_side().0,
+                b'k' => Self::black_king_side().0,
+                b'q' => Self::black_queen_side().0,
+                _ => Self::new().0
+            }; i += 1;
+        } Self(castling)
+    }
+}
+
+impl Display for Castling {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.0 {
+            Castling::WKS => writeln!(f, "white king-side castling"),
+            Castling::WQS => writeln!(f, "white queen-side castling"),
+            Castling::BKS => writeln!(f, "black king-side castling"),
+            Castling::BQS => writeln!(f, "black queen-side castling"),
+            Castling::WKS_AND_WQS => writeln!(f, "white king and queen side castling"),
+            Castling::BKS_AND_BQS => writeln!(f, "black king and queen side castling"),
+            _ => writeln!(f, "no castling")
+        }
+    }
+}
+
+impl Debug for Castling {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
+    }
+}
+
+#[repr(u8)]
+pub enum CastlingVariant {
+    WhiteKingSide,
+    WhiteQueenSide,
+    WhiteKingAndQueenSide,
+
+    BlackKingSide,
+    BlackQueenSide,
+    BlackKingAndQueenSide
+}
 
 #[repr(packed)]
 #[derive(Copy, Clone, Debug)]
@@ -128,6 +275,18 @@ impl Square {
     }
 
     #[inline(always)]
+    const fn from_fen(square: &str) -> Self {
+        let bytes = square.as_bytes();
+        #[cfg(debug_assertions)]
+        if bytes.len() != 2 {
+            panic!("invalid square data: {square}")
+        }
+        let col = (bytes[0] - b'a') as usize;
+        let row = (bytes[1] - b'1') as usize;
+        Self::from_index(FLIP[(row * 8) + col])
+    }
+
+    #[inline(always)]
     pub const fn file(&self) -> usize {
         self.to_index() & 7
     }
@@ -137,10 +296,20 @@ impl Square {
         self.to_index() >> 3
     }
 
+    #[inline(always)]
+    pub const fn flip_rank_usize(rank: usize) -> usize {
+        rank ^ A8.to_index()
+    }
+
     // Swap A1 <-> A8
     #[inline(always)]
     pub const fn flip_rank(&self) -> usize {
         self.to_index() ^ A8.to_index()
+    }
+
+    #[inline(always)]
+    pub const fn flip_rank_file(file: usize) -> usize {
+        file ^ H1.to_index()
     }
 
     // Swap A1 <-> H1
@@ -681,30 +850,53 @@ mod board {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Board {
-    boards: [BitBoard; Pieces::_RESERVED_PIECES_COUNT.to_index()],
-    turn: bool, // true -> white, false -> black
+    turn: Turn, // true -> white, false -> black
+    castling_rights: Castling,
+    en_passant: Option::<Square>,
+    boards: [BitBoard; Pieces::_RESERVED_PIECES_COUNT.to_index()]
 }
 
 impl Board {
+    pub const EMPTY_BOARDS: [BitBoard; Pieces::_RESERVED_PIECES_COUNT.to_index()] = [
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new(),
+        BitBoard::new()
+    ];
+
+    pub const BOARDS: [BitBoard; Pieces::_RESERVED_PIECES_COUNT.to_index()] = [
+        Pieces::WhitePawns.init_board(),   // 0
+        Pieces::BlackPawns.init_board(),   // 1
+        Pieces::WhiteKnights.init_board(), // 2
+        Pieces::BlackKnights.init_board(), // 3
+        Pieces::WhiteBishops.init_board(), // 4
+        Pieces::BlackBishops.init_board(), // 5
+        Pieces::WhiteRooks.init_board(),   // 6
+        Pieces::BlackRooks.init_board(),   // 7
+        Pieces::WhiteQueens.init_board(),  // 8
+        Pieces::BlackQueens.init_board(),  // 9
+        Pieces::WhiteKings.init_board(),   // 10
+        Pieces::BlackKings.init_board(),   // 11
+        Pieces::AllWhites.init_board(),    // 12
+        Pieces::AllBlacks.init_board(),    // 13
+    ];
+
     #[inline(always)]
     pub const fn new() -> Self {
         Self {
-            boards: [
-                Pieces::WhitePawns.init_board(),
-                Pieces::BlackPawns.init_board(),
-                Pieces::WhiteKnights.init_board(),
-                Pieces::BlackKnights.init_board(),
-                Pieces::WhiteBishops.init_board(),
-                Pieces::BlackBishops.init_board(),
-                Pieces::WhiteRooks.init_board(),
-                Pieces::BlackRooks.init_board(),
-                Pieces::WhiteQueens.init_board(),
-                Pieces::BlackQueens.init_board(),
-                Pieces::WhiteKings.init_board(),
-                Pieces::BlackKings.init_board(),
-                Pieces::AllWhites.init_board(),
-                Pieces::AllBlacks.init_board(),
-            ],
+            boards: Self::BOARDS,
+            en_passant: None,
+            castling_rights: Castling::new(),
             turn: true
         }
     }
@@ -729,7 +921,7 @@ impl Board {
     #[inline(always)]
     pub const fn get_kind(&self, src: usize) -> Pieces {
         let mut i = 0;
-        while i < Pieces::_RESERVED_PIECES_COUNT.to_index() - 2 {
+        while i < ALL_PIECES_COUNT {
             if self.boards[i].get_bit(src) {
                 return Pieces::from_index(i)
             } i += 1;
@@ -771,7 +963,7 @@ impl Board {
 
     #[inline(always)]
     pub fn iter(&self) -> impl Iterator::<Item = BitBoard> + '_ {
-        self.boards.into_iter().take(Pieces::_RESERVED_PIECES_COUNT.to_index() - 2)
+        self.boards.into_iter().take(ALL_PIECES_COUNT)
     }
 
     for_all_pieces!(pieces -> &BitBoard);
@@ -892,6 +1084,31 @@ impl Board {
 
         Score(wscore, bscore)
     }
+
+    pub fn parse_fen(fen: &str) -> Self {
+        let parts = fen.split_whitespace().collect::<Vec::<_>>();
+        let boards = parts[0].split('/').fold({
+            (0, Self::EMPTY_BOARDS)
+        }, |(row, mut boards), line| {
+            line.bytes().fold(0, |col, b| {
+                if (b'0'..=b'9').contains(&b) {
+                    col + (b - b'0') as usize
+                } else {
+                    let idx = FEN_BB_MAP[fen_byte_to_map_index(b)];
+                    let pos = row * BitBoard::WIDTH + col;
+                    boards[idx].set_bit(pos as _, true);
+                    col + 1
+                }
+            }); (row + 1, boards)
+        }).1;
+
+        Self {
+            boards,
+            turn: parts[1].eq_ignore_ascii_case("w"),
+            castling_rights: Castling::from_fen(parts[2]),
+            en_passant: parts[3].ne("-").then(|| Square::from_fen(parts[3]))
+        }
+    }
 }
 
 impl Display for Board {
@@ -916,26 +1133,36 @@ impl Display for Board {
         }
         writeln!(f, " +-----------------+")?;
         writeln!(f, "   a b c d e f g h")?;
-        write!(f, "turn: {color}", color = if self.turn { "white" } else { "black" })
+        writeln!(f, "turn: {color}", color = if self.turn { "white" } else { "black" })?;
+        write!(f, "castling rights: {cr}", cr = self.castling_rights)?;
+        if let Some(ep) = self.en_passant {
+            write!(f, "en passant: {ep}")
+        } else {
+            write!(f, "en passant: [none]")
+        }
     }
 }
 
 fn main() {
-    let mut board = Board::new();
-    board.make_move(mv![.D2, .D4]);
-    board.make_move(mv![.E7, .E5]);
-    board.make_move(mv![.F2, .F4]);
-    board.make_move(mv![.D8, .B3]);
+    let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
+    let board = Board::parse_fen(fen);
     println!("{board}");
-    // println!("evaluation: {}", board.evaluate());
-    // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
-    // println!("{}", board.legal_moves_boards().len());
-    board.legal_moves_boards().iter().for_each(|board| println!("{board}"));
-    // println!("{boards}")
+
+    // let mut board = Board::new();
+    // board.make_move(mv![.D2, .D4]);
+    // board.make_move(mv![.E7, .E5]);
+    // board.make_move(mv![.F2, .F4]);
+    // board.make_move(mv![.D8, .B3]);
+    // println!("{board}");
+    // // println!("evaluation: {}", board.evaluate());
+    // // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
+    // // println!("{}", board.legal_moves_boards().len());
+    // board.legal_moves_boards().iter().for_each(|board| println!("{board}"));
+    // // println!("{boards}")
 
     // println!("{}", D4.to_index());
     // println!("{}", BitBoard(WHITE_PAWN_MOVES[D4.to_index()]));
     // println!("{}", BitBoard::get_white_pawn_moves_square(A3, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
     // println!("{}", BitBoard::get_white_pawn_moves_square(A4, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
-    // println!("{}", BitBoard::get_queen_moves_square(A2, BitBoard::all_blacks(), BitBoard::all_whites()));
+    // println!("{}", BitBoard::get_queen_moves_square(A2, BiBtoard::all_blacks(), BitBoard::all_whites()));
 }
