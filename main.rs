@@ -1,10 +1,12 @@
 use std::fmt::{Debug, Display};
 
+mod uci;
 mod psqt;
 mod magic;
 #[macro_use]
 mod macros;
 
+use uci::*;
 use psqt::*;
 use magic::*;
 
@@ -79,6 +81,36 @@ impl Castling {
     }
 
     #[inline(always)]
+    pub const fn no_castling() -> Self {
+        Self::new()
+    }
+
+    #[inline(always)]
+    pub const fn to_castling_variant(&self) -> CastlingVariant {
+        use CastlingVariant::*;
+        if self.0 == Self::WKS | Self::WQS {
+            WhiteKingAndQueenSide
+        } else if self.0 == Self::WKS {
+            WhiteKingSide
+        } else if self.0 == Self::WQS {
+            WhiteQueenSide
+        } else if self.0 == Self::BKS | Self::BQS {
+            BlackKingAndQueenSide
+        } else if self.0 == Self::BKS {
+            BlackKingSide
+        } else if self.0 == Self::BQS {
+            BlackQueenSide
+        } else {
+            NoCastling
+        }
+    }
+
+    #[inline(always)]
+    pub const fn is(&self, castling: CastlingVariant) -> bool {
+        self.0 == castling.to_castling().0
+    }
+
+    #[inline(always)]
     pub const fn white_king_side() -> Self {
         Self(Self::WKS)
     }
@@ -117,7 +149,9 @@ impl Castling {
             BlackKingSide => Self::black_king_side(),
             BlackQueenSide => Self::black_queen_side(),
             WhiteKingAndQueenSide => Self::white_king_and_queen_side(),
-            BlackKingAndQueenSide => Self::black_king_and_queen_side()
+            BlackKingAndQueenSide => Self::black_king_and_queen_side(),
+            NoCastling => Self::no_castling(),
+            _ => unreachable!()
         };
     }
 
@@ -150,13 +184,13 @@ impl Display for Castling {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.0 {
-            Castling::WKS => writeln!(f, "white king-side castling"),
-            Castling::WQS => writeln!(f, "white queen-side castling"),
-            Castling::BKS => writeln!(f, "black king-side castling"),
-            Castling::BQS => writeln!(f, "black queen-side castling"),
-            Castling::WKS_AND_WQS => writeln!(f, "white king and queen side castling"),
-            Castling::BKS_AND_BQS => writeln!(f, "black king and queen side castling"),
-            _ => writeln!(f, "no castling")
+            Castling::WKS => write!(f, "white king-side castling"),
+            Castling::WQS => write!(f, "white queen-side castling"),
+            Castling::BKS => write!(f, "black king-side castling"),
+            Castling::BQS => write!(f, "black queen-side castling"),
+            Castling::WKS_AND_WQS => write!(f, "white king and queen side castling"),
+            Castling::BKS_AND_BQS => write!(f, "black king and queen side castling"),
+            _ => write!(f, "no castling")
         }
     }
 }
@@ -170,13 +204,52 @@ impl Debug for Castling {
 
 #[repr(u8)]
 pub enum CastlingVariant {
-    WhiteKingSide,
-    WhiteQueenSide,
-    WhiteKingAndQueenSide,
+    WhiteKingSide         = 0,
+    WhiteQueenSide        = 1,
+    WhiteKingAndQueenSide = 2,
 
-    BlackKingSide,
-    BlackQueenSide,
-    BlackKingAndQueenSide
+    BlackKingSide         = 3,
+    BlackQueenSide        = 4,
+    BlackKingAndQueenSide = 5,
+
+    NoCastling = 6,
+
+    #[allow(non_camel_case_types)]
+    _RESERVED_CASTLING_VARIANT_COUNT = 7
+}
+
+impl CastlingVariant {
+    #[inline(always)]
+    pub const fn to_castling(&self) -> Castling {
+        use CastlingVariant::*;
+        match *self {
+            WhiteKingSide => Castling::white_king_side(),
+            WhiteQueenSide => Castling::white_queen_side(),
+            WhiteKingAndQueenSide => Castling::white_king_and_queen_side(),
+
+            BlackKingSide => Castling::black_king_side(),
+            BlackQueenSide => Castling::black_queen_side(),
+            BlackKingAndQueenSide => Castling::black_king_and_queen_side(),
+
+            NoCastling => Castling::no_castling(),
+
+            _ => unreachable!()
+        }
+    }
+}
+
+impl Display for CastlingVariant {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.to_castling(), f)
+    }
+}
+
+impl Debug for CastlingVariant {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.to_castling(), f)
+    }
 }
 
 #[repr(packed)]
@@ -322,14 +395,7 @@ impl Square {
 impl Display for Square {
     #[inline(always)]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let idx = *self as usize;
-        let file = (idx % 8) as u8;
-        write!{
-            f,
-            "{file_char}{rank}",
-            file_char = (b'a' + file) as char,
-            rank = BitBoard::WIDTH - idx / BitBoard::HEIGHT
-        }
+        Debug::fmt(&self, f)
     }
 }
 
@@ -630,7 +696,7 @@ impl Iterator for BitBoardIterator {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Pieces {
     WhitePawns   = 0,
     BlackPawns   = 1,
@@ -722,54 +788,221 @@ mod mv {
 
     #[macro_export]
     macro_rules! mv {
-        ($src: expr, $dst: expr) => { Move::new_from_index($src, $dst) };
-        ($src: expr, $dst: expr, $prom: expr) => { Move::new_from_index_promotion($src, $dst, $prom) };
-        (.$src: tt, .$dst: tt) => { Move::new_from_square(Square::$src, Square::$dst) };
-        (.$src: tt, .$dst: tt, $prom: expr) => { Move::new_from_square_promotion(Square::$src, Square::$dst, $prom) };
+        ($src: expr, $dst: expr) => { Move::from_index($src, $dst) };
+        ($src: expr, $dst: expr, p.$prom: expr) => { Move::from_index_promotion($src, $dst, p.$prom) };
+
+        (.$src: tt, .$dst: tt) => { Move::new_src_square(Square::$src, Square::$dst) };
+        (.$src: tt, .$dst: tt, p.$prom: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), None, None) };
+        (.$src: tt, .$dst: tt, c.$capture: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, None, Some($capture), None) };
+        (.$src: tt, .$dst: tt, p.$prom: expr, c.$capture: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), Some($capture), None) };
+        (.$src: tt, .$dst: tt, p.$prom: expr, c.$capture: expr, cas.$castling: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, c.$capture: expr, cas.$castling: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, None, Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, cas.$castling: expr, c.$capture: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, None, Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, p.$prom: expr, cas.$capture: expr, c.$castling: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, cas.$capture: expr, p.$prom: expr, c.$castling: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, cas.$capture: expr, c.$castling: expr, p.$prom: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), Some($capture), Some($castling)) };
+        (.$src: tt, .$dst: tt, cas.$castling: expr) => { Move::new_src_square_promotion(Square::$src, Square::$dst, $prom) };
     }
 }
 
 #[repr(packed)]
 #[derive(Eq, Copy, Clone, Debug, PartialEq)]
-pub struct Move(u16);
+pub struct Move(u64); // Use u64 for more flexibility if needed
 
 impl Move {
+    const CASTLING_MASK: u64 = 0xF << 16;  // 4 bits for castling (16-19)
+    const CAPTURE_MASK: u64 = 1 << 20;     // 1 bit for capture (20)
+    const PROMOTION_MASK: u64 = 0xF << 12; // 4 bits for promotion (12-15)
+    
+    pub fn from_algebraic_notation(an: &str) -> Self {
+        println!("from an: {an}");
+
+        let mut move_value = 0u64;
+
+        // Handle castling moves (e.g., "O-O", "O-O-O")
+        if an == "O-O" || an == "O-O-O" {
+            let castling = if an == "O-O" { CastlingVariant::WhiteKingSide } else { CastlingVariant::WhiteQueenSide };
+            return Self::from_castling_variant(castling);
+        }
+
+        let an = if ['Q', 'R', 'B', 'N', 'q', 'r', 'b', 'n'].contains(&(an.as_bytes()[0] as char)) {
+            &an[1..]
+        } else {
+            &an[..]
+        };
+
+        let (notation, capture) = if let Some(capture_pos) = an.find('x') {
+            let src_square = &an[..capture_pos];
+            let dst_square = &an[capture_pos + 1..]; // e.g., "f5"
+            (src_square.to_string() + dst_square, Some(dst_square))
+        } else {
+            (an.to_string(), None)
+        };
+
+        let (notation, promotion_char) = if let Some(prom_char) = notation.chars().last() {
+            if ['Q', 'R', 'B', 'N'].contains(&prom_char) {
+                let move_notation = &notation[..notation.len() - 1]; // Remove promotion char
+                (move_notation.to_string(), Some(prom_char))
+            } else {
+                (notation, None)
+            }
+        } else {
+            (notation, None)
+        };
+
+        // Handle regular moves (e.g., "e2e4", "Nf3", "e7e8")
+        let src_square = Self::algebraic_to_square(&notation[0..2]);
+        let dst_square = Self::algebraic_to_square(&notation[2..4]);
+
+        // Apply the move (in terms of source and destination squares)
+        move_value |= (src_square.to_bit_index() as u64) | ((dst_square.to_bit_index() as u64) << 6);
+
+        // Handle promotion (only if there's a valid promotion character)
+        if let Some(promoted_piece) = promotion_char {
+            let promotion_piece = match promoted_piece {
+                'N' => Pieces::WhiteKnights,
+                'B' => Pieces::WhiteBishops,
+                'R' => Pieces::WhiteRooks,
+                'Q' => Pieces::WhiteQueens,
+                _ => panic!("Invalid promoted piece: {}", promoted_piece),
+            };
+            move_value |= (promotion_piece.to_index() as u64) << 12;
+        } else {
+            move_value |= (Pieces::_RESERVED_PIECES_COUNT.to_index() as u64) << 12;
+        }
+
+        // Handle capture (if there was a capture)
+        if capture.is_some() {
+            move_value |= Self::CAPTURE_MASK;
+        }
+
+        Self(move_value)
+    }
+
+    pub fn algebraic_to_square(sq: &str) -> Square {
+        // The file (a-h) maps to 0-7, and the rank (1-8) maps to 0-7.
+        let file = match sq.chars().next().unwrap() {
+            'a' => 0,
+            'b' => 1,
+            'c' => 2,
+            'd' => 3,
+            'e' => 4,
+            'f' => 5,
+            'g' => 6,
+            'h' => 7,
+            _ => panic!("Invalid file in algebraic notation: {sq}"),
+        };
+        
+        let rank = sq.chars().nth(1).unwrap().to_digit(10).unwrap() as usize - 1;
+
+        // Convert to the Square enum using the file and rank values
+        Square::from_index(rank * 8 + file)
+    }
+
     #[inline(always)]
-    pub fn new_from_index_promotion(src: usize, dst: usize, promotion: Option::<Piece>) -> Self {
+    pub fn from_castling(castling: Castling) -> Self {
+        // Castling value will be stored as signed integer
+        Self((castling.0 as u64) << 16)
+    }
+
+    #[inline(always)]
+    pub fn from_castling_variant(castling_variant: CastlingVariant) -> Self {
+        // Castling value will be stored as signed integer
+        Self((castling_variant.to_castling().0 as u64) << 16)
+    }
+
+    #[inline(always)]
+    pub fn from_index_full(src: usize, dst: usize, promotion: Option<Pieces>, capture: Option<Pieces>, castling: Option<CastlingVariant>) -> Self {
         #[cfg(debug_assertions)]
         if src > 63 || dst > 63 {
             panic!("{src} or {dst} is too big to be packed")
         }
 
-        Self((src as u16) | ((dst as u16) << 6) | match promotion {
-            Some(p) => (p as u16) << 12,
-            _ => 0
-        })
+        let mut move_value = (src as u64) | ((dst as u64) << 6);
+
+        let promotion = promotion.unwrap_or(Pieces::_RESERVED_PIECES_COUNT);
+        move_value |= (promotion as u64) << 12;
+
+        // Handle capture
+        if capture.is_some() {
+            move_value |= Self::CAPTURE_MASK;
+        }
+
+        let castling_val = castling.map(|cas| cas.to_castling().0).unwrap_or(CastlingVariant::_RESERVED_CASTLING_VARIANT_COUNT as u8);
+        move_value |= (castling_val as u64) << 16;
+
+        Self(move_value)
     }
 
     #[inline(always)]
-    pub fn new_from_index(src: usize, dst: usize) -> Self {
-        Self::new_from_index_promotion(src, dst, None)
+    pub fn from_index(src: usize, dst: usize) -> Self {
+        Self::from_index_full(src, dst, None, None, None)
     }
 
     #[inline(always)]
-    pub fn new_from_square_promotion(src: Square, dst: Square, promotion: Option::<Piece>) -> Self {
-        Self::new_from_index_promotion(src.to_bit_index(), dst.to_bit_index(), promotion)
+    pub fn from_capture(src: usize, dst: usize, capture: Pieces) -> Self {
+        Self::from_index_full(src, dst, None, Some(capture), None)
     }
 
     #[inline(always)]
-    pub fn new_from_square(src: Square, dst: Square) -> Self {
-        Self::new_from_index(src.to_bit_index(), dst.to_bit_index())
+    pub fn new_src_square_full(src: Square, dst: Square, promotion: Option<Pieces>, capture: Option<Pieces>, castling: Option<CastlingVariant>) -> Self {
+        Self::from_index_full(src.to_bit_index(), dst.to_bit_index(), promotion, capture, castling)
     }
 
     #[inline(always)]
-    pub const fn from_square(self) -> Square {
-        Square::from_index((self.0 & 0x3F) as _)
+    pub fn new_src_square_promotion(src: Square, dst: Square, promotion: Option<Pieces>) -> Self {
+        Self::from_index_full(src.to_bit_index(), dst.to_bit_index(), promotion, None, None)
     }
 
     #[inline(always)]
-    pub const fn to_square(self) -> Square {
-        Square::from_index(((self.0 >> 6) & 0x3F) as _)
+    pub fn new_src_square(src: Square, dst: Square) -> Self {
+        Self::from_index(src.to_bit_index(), dst.to_bit_index())
+    }
+
+    #[inline(always)]
+    pub const fn src_square(self) -> Square {
+        Square::from_index(FLIP[(self.0 & 0x3F) as usize])
+    }
+
+    #[inline(always)]
+    pub fn dst_square(self) -> Square {
+        Square::from_index(FLIP[((self.0 >> 6) & 0x3F) as usize])
+    }
+
+    pub fn to_algebraic_notation(self) -> String {
+        if let Some(castling) = self.castling() {
+            match castling {
+                CastlingVariant::WhiteKingSide | CastlingVariant::BlackKingSide => return "O-O".to_string(),
+                CastlingVariant::WhiteQueenSide | CastlingVariant::BlackQueenSide => return "O-O-O".to_string(),
+                _ => {}
+            }
+        }
+
+        let src = self.src_square();
+        let dst = self.dst_square();
+        println!("converting src: {src} square and dst: {dst} square to algebraic notation");
+
+        let mut notation = if self.capture().is_some() {
+            format!("{:?}x{:?}", src, dst).to_lowercase()
+        } else {
+            format!("{:?}{:?}", src, dst).to_lowercase()
+        };
+        
+        if let Some(promoted_piece) = self.promotion() {
+            if promoted_piece == Pieces::WhitePawns || promoted_piece == Pieces::BlackPawns {
+                return notation
+            }
+            let promoted_char = match promoted_piece {
+                Pieces::WhiteKnights | Pieces::BlackKnights => 'N',
+                Pieces::WhiteBishops | Pieces::BlackBishops => 'B',
+                Pieces::WhiteRooks | Pieces::BlackRooks     => 'R',
+                Pieces::WhiteQueens | Pieces::BlackQueens   => 'Q',
+                _ => panic!("Unexpected piece for promotion"),
+            };
+            format!("{notation}={promoted_char}")
+        } else {
+            notation
+        }
     }
 
     #[inline(always)]
@@ -783,10 +1016,29 @@ impl Move {
     }
 
     #[inline(always)]
-    pub const fn promotion(self) -> Option::<Piece> {
-        match (self.0 >> 12) & 0xF {
+    pub fn promotion(self) -> Option<Pieces> {
+        let promotion_bits = (self.0 >> 12) & 0xF;
+        if promotion_bits >= Pieces::_RESERVED_PIECES_COUNT.to_index() as u64 - 1 {
+            None
+        } else {
+            Some(Pieces::from_index(promotion_bits as usize))
+        }
+    }
+
+    #[inline(always)]
+    pub const fn capture(self) -> Option<Pieces> {
+        if self.0 & Self::CAPTURE_MASK != 0 {
+            Some(Pieces::from_index(((self.0 >> 21) & 0xF) as usize + 1)) // Capture piece encoded from bits 21 to 24
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    pub fn castling(self) -> Option<CastlingVariant> {
+        match (self.0 >> 16 & 0xF) {
             0 => None,
-            x @ _ => Some(Piece::from_index(x as _))
+            x => Some(unsafe { std::mem::transmute(x as u8 - 1) })
         }
     }
 }
@@ -796,10 +1048,12 @@ impl Display for Move {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!{
             f,
-            "from: {from}, to: {to}, promotion: {prom:?}",
-            from = self.from_square(),
-            to = self.to_square(),
-            prom = self.promotion()
+            "from: {from}, to: {to}, promotion: {prom:?}, capture: {cap:?}, castling: {cas:?}",
+            from = self.src_square(),
+            to = self.dst_square(),
+            prom = self.promotion(),
+            cap = self.capture(),
+            cas = self.castling()
         }
     }
 }
@@ -1085,8 +1339,19 @@ impl Board {
         Score(wscore, bscore)
     }
 
-    pub fn parse_fen(fen: &str) -> Self {
+    pub fn fen_set(&mut self, fen: &str) {
         let parts = fen.split_whitespace().collect::<Vec::<_>>();
+
+        if parts.is_empty() {
+            panic!("invalid fen string: {fen}");
+        }
+
+        let (active_color, castling_rights, en_passant) = if parts.len() >= 2 {
+            (parts[1], parts[2], *parts.get(3).unwrap_or(&"-"))
+        } else {
+            ("w", "-", "-")
+        };
+
         let boards = parts[0].split('/').fold({
             (0, Self::EMPTY_BOARDS)
         }, |(row, mut boards), line| {
@@ -1102,12 +1367,23 @@ impl Board {
             }); (row + 1, boards)
         }).1;
 
-        Self {
-            boards,
-            turn: parts[1].eq_ignore_ascii_case("w"),
-            castling_rights: Castling::from_fen(parts[2]),
-            en_passant: parts[3].ne("-").then(|| Square::from_fen(parts[3]))
-        }
+        self.boards = boards;
+        self.turn = active_color.eq_ignore_ascii_case("w");
+        self.castling_rights = Castling::from_fen(castling_rights);
+        self.en_passant = en_passant.ne("-").then(|| Square::from_fen(en_passant));
+    }
+
+    #[inline(always)]
+    pub fn from_fen(fen: &str) -> Self {
+        let mut board = Self::new();
+        board.fen_set(fen);
+        board
+    }
+
+    #[inline(always)]
+    pub const fn reset_positions(&mut self) -> &mut Self {
+        *self = Self::new();
+        self
     }
 }
 
@@ -1134,7 +1410,7 @@ impl Display for Board {
         writeln!(f, " +-----------------+")?;
         writeln!(f, "   a b c d e f g h")?;
         writeln!(f, "turn: {color}", color = if self.turn { "white" } else { "black" })?;
-        write!(f, "castling rights: {cr}", cr = self.castling_rights)?;
+        writeln!(f, "castling rights: {cr}", cr = self.castling_rights)?;
         if let Some(ep) = self.en_passant {
             write!(f, "en passant: {ep}")
         } else {
@@ -1144,9 +1420,18 @@ impl Display for Board {
 }
 
 fn main() {
-    let fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1";
-    let board = Board::parse_fen(fen);
-    println!("{board}");
+    // let fen = "rnbqkbnr/1ppppppp/p7/8/4PP2/8/PPPP2PP/RNBQKBNR w - - 0 1";
+    // let board = Board::from_fen(fen);
+    // println!("{board}");
+
+    let mut uci = UCI::new().unwrap();
+    uci.start();
+    // println!("{}", Move::from_algebraic_notation("Ng1f3"));
+
+    // let mv = mv![.D2, .E3, p.Pieces::WhitePawns];
+    // let mv = mv![.D2, .E3, c.Pieces::BlackPawns];
+    // println!("{mv}");
+    // println!("{}", mv.to_algebraic_notation());
 
     // let mut board = Board::new();
     // board.make_move(mv![.D2, .D4]);
@@ -1156,7 +1441,7 @@ fn main() {
     // println!("{board}");
     // // println!("evaluation: {}", board.evaluate());
     // // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
-    // // println!("{}", board.legal_moves_boards().len());
+    // board.legal_moves().iter().for_each(|mv| println!("{src} {dst}", src = mv.src_square(), dst = mv.dst_square()));
     // board.legal_moves_boards().iter().for_each(|board| println!("{board}"));
     // // println!("{boards}")
 
