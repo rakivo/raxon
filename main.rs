@@ -219,6 +219,8 @@ pub enum CastlingVariant {
 }
 
 impl CastlingVariant {
+    gen_from_to_index!{u8, if idx < Self::_RESERVED_CASTLING_VARIANT_COUNT.to_index(); "invalid idx"}
+
     #[inline(always)]
     pub const fn to_castling(&self) -> Castling {
         use CastlingVariant::*;
@@ -319,7 +321,7 @@ impl Iterator for PieceIterator {
         if self.piece_pos < Piece::_RESERVED_PIECE_COUNT.to_index() {
             let pos = self.piece_pos;
             self.piece_pos += 1;
-            Some(unsafe { std::mem::transmute(pos as u8) })
+            Some(Piece::from_index(pos))
         } else {
             None
         }
@@ -522,13 +524,13 @@ impl BitBoard {
     #[inline(always)]
     pub const fn get_white_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
         let square = FLIP[square];
-        Self((WHITE_PAWN_MOVES[square] & !friendly.0) | (WHITE_PAWN_ATTACKS[square] & enemy.0))
+        Self((WHITE_PAWN_MOVES[square] & !enemy.0 & !friendly.0) | (WHITE_PAWN_ATTACKS[square] & enemy.0))
     }
 
     #[inline(always)]
     pub const fn get_black_pawn_moves(square: usize, enemy: Self, friendly: Self) -> Self {
         let square = FLIP[square];
-        Self((BLACK_PAWN_MOVES[square] & !friendly.0) | (BLACK_PAWN_ATTACKS[square] & enemy.0))
+        Self((BLACK_PAWN_MOVES[square] & !enemy.0 & !friendly.0 & !enemy.0) | (BLACK_PAWN_ATTACKS[square] & enemy.0))
     }
 
     #[inline(always)]
@@ -725,6 +727,16 @@ impl Pieces {
         Piece::from_pieces(*self)
     }
 
+    // might panic, be careful :D
+    #[inline(always)]
+    pub const fn invert_color(&self) -> Self {
+        if self.is_white() {
+            Self::from_index(self.to_index() + 1)
+        } else {
+            Self::from_index(self.to_index() - 1)
+        }
+    }
+
     #[inline(always)]
     pub const fn is_white(&self) -> bool {
         matches!(self,
@@ -790,6 +802,7 @@ mod mv {
     macro_rules! mv {
         ($src: expr, $dst: expr) => { Move::from_index($src, $dst) };
         ($src: expr, $dst: expr, p.$prom: expr) => { Move::from_index_promotion($src, $dst, p.$prom) };
+        ($src: expr, $dst: expr, c.$capture: expr) => { Move::from_index_full($src, $dst, None, Some($capture), None) };
 
         (.$src: tt, .$dst: tt) => { Move::new_src_square(Square::$src, Square::$dst) };
         (.$src: tt, .$dst: tt, p.$prom: expr) => { Move::new_src_square_full(Square::$src, Square::$dst, Some($prom), None, None) };
@@ -825,12 +838,17 @@ impl Move {
             return Self::from_castling_variant(castling);
         }
 
-        let an = if ['Q', 'R', 'B', 'N', 'q', 'r', 'b', 'n'].contains(&(an.as_bytes()[0] as char)) {
-            &an[1..]
-        } else {
-            &an[..]
-        };
+        fn trim_piece_at_the_left(s: &str) -> &str {
+            const PIECE_LIST: &[u8] = &[b'Q', b'R', b'B', b'N', b'K', b'q', b'r', b'b', b'n', b'k'];
+            let bytes = s.as_bytes();
+            if PIECE_LIST.contains(&bytes[0]) && PIECE_LIST.contains(&bytes[1]) {
+                &s[1..]
+            } else {
+                &s[..]
+            }
+        }
 
+        let an = trim_piece_at_the_left(an);
         let (notation, capture) = if let Some(capture_pos) = an.find('x') {
             let src_square = &an[..capture_pos];
             let dst_square = &an[capture_pos + 1..]; // e.g., "f5"
@@ -982,7 +1000,7 @@ impl Move {
         let dst = self.dst_square();
         println!("converting src: {src} square and dst: {dst} square to algebraic notation");
 
-        let mut notation = if self.capture().is_some() {
+        let notation = if self.capture().is_some() {
             format!("{:?}x{:?}", src, dst).to_lowercase()
         } else {
             format!("{:?}{:?}", src, dst).to_lowercase()
@@ -1036,9 +1054,9 @@ impl Move {
 
     #[inline(always)]
     pub fn castling(self) -> Option<CastlingVariant> {
-        match (self.0 >> 16 & 0xF) {
+        match self.0 >> 16 & 0xF {
             0 => None,
-            x => Some(unsafe { std::mem::transmute(x as u8 - 1) })
+            x => Some(CastlingVariant::from_index(x as usize - 1))
         }
     }
 }
@@ -1060,18 +1078,24 @@ impl Display for Move {
 
 // it's just easier to have this fn-like macro here
 macro_rules! legal_moves {
-    ($self: expr, $moves: ident, $color: tt) => { paste::paste! {
+    ($self: expr, $moves: ident, $enemy: expr, $color: tt) => { paste::paste! {
         $self.[<iter_ $color s>]().zip(Self::[<$color:upper S>]).flat_map(|(board, pieces)| {
             board.iter().flat_map(move |src| {
                 match pieces {
-                    Pieces::[<$color:camel Pawns>]   => BitBoard::[<get_ $color _pawn_moves>](src, $self.occupancy(), $self.friendly()),
+                    Pieces::[<$color:camel Pawns>]   => BitBoard::[<get_ $color _pawn_moves>](src, $self.enemy(), $self.friendly()),
                     Pieces::[<$color:camel Knights>] => BitBoard::get_knight_moves(src, $self.friendly()),
                     Pieces::[<$color:camel Bishops>] => BitBoard::get_bishop_moves(src, $self.occupancy(), $self.friendly()),
                     Pieces::[<$color:camel Rooks>]   => BitBoard::get_rook_moves(src, $self.occupancy(), $self.friendly()),
                     Pieces::[<$color:camel Queens>]  => BitBoard::get_queen_moves(src, $self.occupancy(), $self.friendly()),
                     Pieces::[<$color:camel Kings>]   => BitBoard::get_king_moves(src, $self.friendly()),
                     _ => unreachable!()
-                }.iter().map(move |dst| mv![src, dst])
+                }.iter().map(move |dst| {
+                    if $enemy.get_bit(dst) {
+                        mv![src, dst, c.Pieces::[<$color:camel Pawns>]] // just for now
+                    } else {
+                        mv![src, dst]
+                    }
+                })
             })
         }).collect::<mv::Vec>()
     }};
@@ -1173,13 +1197,24 @@ impl Board {
     // get piece kind at `src`th bit
     #[track_caller]
     #[inline(always)]
-    pub const fn get_kind(&self, src: usize) -> Pieces {
+    pub fn get_kind(&self, src: usize) -> Pieces {
+        #[cfg(not(debug_assertions))]
+        unsafe { self.get_kind_option(src).unwrap_unchecked() }
+
+        #[cfg(debug_assertions)]
+        { self.get_kind_option(src).unwrap() }
+    }
+
+    // get piece kind at `src`th bit
+    #[track_caller]
+    #[inline(always)]
+    pub fn get_kind_option(&self, src: usize) -> Option::<Pieces> {
         let mut i = 0;
         while i < ALL_PIECES_COUNT {
             if self.boards[i].get_bit(src) {
-                return Pieces::from_index(i)
+                return Some(Pieces::from_index(i))
             } i += 1;
-        } unreachable!()
+        } None
     }
 
     pub const WHITES: [Pieces; 6] = [
@@ -1248,17 +1283,26 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn make_move_index(&mut self, src: usize, dst: usize) {
-        let kind = self.get_kind(src);
-        let board = self.pieces_mut(kind);
+    pub fn make_move_index(&mut self, src: usize, dst: usize) {
+        let src_piece_kind = self.get_kind(src);
+        
+        let board = self.pieces_mut(src_piece_kind);
 
         board.clear_bit(src);
         board.set_bit(dst, true);
 
-        if kind.is_white() {
+        if src_piece_kind.is_white() {
             self.all_whites_mut().clear_bit(src);
             self.all_whites_mut().set_bit(dst, true);
+            if let Some(dst_piece_kind) = self.get_kind_option(dst) {
+                self.all_blacks_mut().clear_bit(dst);
+                self.pieces_mut(dst_piece_kind.invert_color()).clear_bit(dst);
+            }
         } else {
+            if let Some(dst_piece_kind) = self.get_kind_option(dst) {
+                self.all_whites_mut().clear_bit(dst);
+                self.pieces_mut(dst_piece_kind.invert_color()).clear_bit(dst);
+            }
             self.all_blacks_mut().clear_bit(src);
             self.all_blacks_mut().set_bit(dst, true);
         }
@@ -1267,7 +1311,7 @@ impl Board {
     }
 
     #[inline(always)]
-    pub const fn make_move(&mut self, mv: Move) {
+    pub fn make_move(&mut self, mv: Move) {
         self.make_move_index(mv.from_bit_index(), mv.to_bit_index())
     }
 
@@ -1294,9 +1338,9 @@ impl Board {
     #[inline]
     pub fn legal_moves(&self) -> mv::Vec {
         if self.turn {
-            legal_moves!(self, moves, white)
+            legal_moves!(self, moves, self.all_blacks(), white)
         } else {
-            legal_moves!(self, moves, black)
+            legal_moves!(self, moves, self.all_whites(), black)
         }
     }
 
@@ -1362,6 +1406,13 @@ impl Board {
                     let idx = FEN_BB_MAP[fen_byte_to_map_index(b)];
                     let pos = row * BitBoard::WIDTH + col;
                     boards[idx].set_bit(pos as _, true);
+                    if (b'B'..=b'R').contains(&b) {
+                        let all_whites_idx = const { Pieces::AllWhites as usize };
+                        boards[all_whites_idx].set_bit(pos as _, true);
+                    } else {
+                        let all_blacks_idx = const { Pieces::AllBlacks as usize };
+                        boards[all_blacks_idx].set_bit(pos as _, true);
+                    }
                     col + 1
                 }
             }); (row + 1, boards)
@@ -1421,11 +1472,15 @@ impl Display for Board {
 
 fn main() {
     // let fen = "rnbqkbnr/1ppppppp/p7/8/4PP2/8/PPPP2PP/RNBQKBNR w - - 0 1";
+    // let fen = "rnbqkbnr/1ppppppp/p7/4p3/4PP2/8/PPPP2PP/RNBQKBNR w - - 0 1";
+    // let fen = "rnbqkNnr/4P3/3PP3/5P1p/2p3pP/pp6/8/RNBQKB1R w KQkq - 0 21";
+    // let fen = "rnbqkbnr/8/8/1Npppppp/PpPPPPPP/RR1QBN1B/8/4K3 b kq - 0 18";
     // let board = Board::from_fen(fen);
     // println!("{board}");
 
     let mut uci = UCI::new().unwrap();
     uci.start();
+
     // println!("{}", Move::from_algebraic_notation("Ng1f3"));
 
     // let mv = mv![.D2, .E3, p.Pieces::WhitePawns];
@@ -1441,13 +1496,21 @@ fn main() {
     // println!("{board}");
     // // println!("evaluation: {}", board.evaluate());
     // // println!("{}", BitBoard::get_white_pawn_moves_square(D4, board.occupancy(), board.friendly()));
-    // board.legal_moves().iter().for_each(|mv| println!("{src} {dst}", src = mv.src_square(), dst = mv.dst_square()));
+    // board.legal_moves().iter().for_each(|mv| println!("{src} {dst} {cap:?}", src = mv.src_square(), dst = mv.dst_square(), cap = mv.capture()));
     // board.legal_moves_boards().iter().for_each(|board| println!("{board}"));
     // // println!("{boards}")
 
     // println!("{}", D4.to_index());
     // println!("{}", BitBoard(WHITE_PAWN_MOVES[D4.to_index()]));
-    // println!("{}", BitBoard::get_white_pawn_moves_square(A3, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
+    // let sq = E6;
+    // let friendly = *board.all_whites();
+    // let enemy = *board.all_blacks();
+    // 110001
+    // 001110
+    // println!("{}", BitBoard(enemy.0));
+    // println!("{}", BitBoard(!enemy.0));
+    // println!("{}", BitBoard((WHITE_PAWN_MOVES[FLIP[sq.to_bit_index()]] & !enemy.0 & !friendly.0) | (WHITE_PAWN_ATTACKS[FLIP[sq.to_bit_index()]] & enemy.0)));
+    // println!("{}", BitBoard::get_white_pawn_moves_square(sq, enemy, friendly));
     // println!("{}", BitBoard::get_white_pawn_moves_square(A4, *board.pieces(Pieces::BlackQueens), BitBoard::all_whites()));
     // println!("{}", BitBoard::get_queen_moves_square(A2, BiBtoard::all_blacks(), BitBoard::all_whites()));
 }

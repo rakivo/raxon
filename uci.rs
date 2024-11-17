@@ -1,5 +1,4 @@
-use std::process::Command;
-use std::io::{Write, BufRead};
+use std::io::BufRead;
 use std::fs::{File, OpenOptions};
 
 use crate::{Move, Board};
@@ -90,10 +89,10 @@ impl UCI {
     }
 
     pub fn handle_go(&mut self, args: &[&str]) {
-        std::thread::sleep(std::time::Duration::from_secs(1));  // Delay for 100 milliseconds
-
         // Check if there are any parameters passed with "go" (like time, depth, etc.)
+        #[allow(unused)]
         let mut depth = None;
+        #[allow(unused)]
         let mut time = None;
 
         // Parse the arguments after "go"
