@@ -90,9 +90,7 @@ impl UCI {
 
     pub fn handle_go(&mut self, args: &[&str]) {
         // Check if there are any parameters passed with "go" (like time, depth, etc.)
-        #[allow(unused)]
         let mut depth = None;
-        #[allow(unused)]
         let mut time = None;
 
         // Parse the arguments after "go"
@@ -124,8 +122,10 @@ impl UCI {
         println!("legal moves:");
         legal_moves.iter().for_each(|mv| println!("src: {src}, dst: {dst}", src = mv.src_square(), dst = mv.dst_square()));
         let best_move = legal_moves[0].to_algebraic_notation();
-        // writeln!(self.debug_output, "legal moves: {legal_moves:?}").unwrap();
         println!("bestmove {best_move}");
+
+        _ = time;
+        _ = depth;
     }
 
     fn handle_quit(&self) {
